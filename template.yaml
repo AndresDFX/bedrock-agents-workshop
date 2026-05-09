@@ -406,7 +406,7 @@ Resources:
       FunctionName: !Sub "${ProjectName}-chat-demo"
       Role: !GetAtt ChatLambdaRole.Arn
       Handler: index.handler
-      Runtime: nodejs22.x
+      Runtime: nodejs20.x
       Timeout: 300
       MemorySize: 512
       Environment:
@@ -425,12 +425,10 @@ Resources:
       AuthType: NONE
       InvokeMode: RESPONSE_STREAM
       Cors:
-        AllowCredentials: false
         AllowHeaders:
           - content-type
         AllowMethods:
-          - POST
-          - OPTIONS
+          - '*'
         AllowOrigins:
           - '*'
         MaxAge: 86400

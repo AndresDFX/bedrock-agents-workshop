@@ -175,7 +175,7 @@ El script:
 2. Empaqueta `src/lambda_function.py` en `lambda.zip`.
 3. Sube `lambda.zip` a S3.
 4. Empaqueta `src-web/chat_lambda.js` como `chat_lambda.zip` (sin `npm install`:
-   el runtime Lambda Node.js 22 ya trae `@aws-sdk/*` preinstalado).
+   el runtime Lambda Node.js 20 ya trae `@aws-sdk/*` preinstalado).
 5. Sube `chat_lambda.zip` a S3 (parámetro `WebLambdaS3Key`).
 6. **Sincroniza** los documentos `kb-data/*.md` a `s3://.../kb-data/`.
 7. Ejecuta `aws cloudformation deploy` con el stack `agente-soporte`
@@ -224,7 +224,7 @@ HTTP del bucket S3 (sin CloudFront). Ábrela en el navegador:
 
 Amazon Lambda solo habilita **RESPONSE_STREAM** en runtimes **Node.js** gestionados.
 Por eso la función publicada es **`src-web/chat_lambda.js`** (renombrada a `index.js` dentro de
-`chat_lambda.zip`). No requiere `npm install`: el runtime Lambda **Node.js 22** ya incluye
+`chat_lambda.zip`). No requiere `npm install`: el runtime Lambda **Node.js 20** ya incluye
 `@aws-sdk/client-bedrock-runtime` y `@aws-sdk/client-bedrock-agent-runtime`. El archivo
 **`src-web/chat_lambda.py`** ofrece la misma lógica para **pruebas locales** en CLI
 (`python chat_lambda.py …`), pero **no** es el artefacto que ejecuta la Function URL.
