@@ -2,8 +2,8 @@
   "name": "techstore-chat-demo-lambda",
   "version": "1.0.0",
   "private": true,
-  "description": "Lambda Function URL RESPONSE_STREAM — Haiku directo vs Bedrock Agent (solo taller)",
-  "dependencies": {
+  "description": "Lambda Function URL RESPONSE_STREAM — Haiku directo vs Bedrock Agent (solo taller). El runtime Lambda Node.js 22 ya incluye @aws-sdk/*; deploy.sh empaqueta chat_lambda.js sin npm install.",
+  "devDependencies": {
     "@aws-sdk/client-bedrock-agent-runtime": "^3.758.0",
     "@aws-sdk/client-bedrock-runtime": "^3.758.0"
   }

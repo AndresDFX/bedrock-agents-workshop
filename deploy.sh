@@ -39,15 +39,13 @@ rm -f lambda.zip
 echo "==> Subiendo lambda.zip a s3://${BUCKET_NAME}/..."
 aws s3 cp lambda.zip "s3://${BUCKET_NAME}/lambda.zip" --region "${REGION}" >/dev/null
 
-echo "==> Empaquetando Lambda demo web (chat_lambda.zip, Node.js + esbuild)..."
+echo "==> Empaquetando Lambda demo web (chat_lambda.zip, Node.js sin npm install)..."
+# El runtime Lambda Node.js 22 incluye @aws-sdk/* preinstalado, así que NO
+# necesitamos npm install ni bundler: copiamos el .js a index.js y zipeamos.
 rm -f chat_lambda.zip
 (
   cd src-web
-  npm install --omit=dev --no-audit --no-fund
-  # RESPONSE_STREAM solo está soportado en Node gestionado; empaquetamos dependencias en un único index.js
-  npx --yes esbuild@0.25.0 chat_lambda.js \
-    --bundle --platform=node --target=node22 --format=cjs \
-    --outfile=index.js --log-level=warning
+  cp chat_lambda.js index.js
   zip -q ../chat_lambda.zip index.js
   rm -f index.js
 )
