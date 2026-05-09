@@ -82,7 +82,7 @@ def _summarize_orchestration_trace(orch: Dict[str, Any]) -> None:
         elif isinstance(kbo, dict):
             refs = kbo.get("retrievedReferences") or []
             print(f"  · [KB resultados] {len(refs)} fragmento(s) recuperado(s)")
-            for i, ref in enumerate(refs[:3], start=1):
+            for i, ref in enumerate(refs[:5], start=1):
                 if not isinstance(ref, dict):
                     continue
                 content = ref.get("content") or {}
@@ -93,8 +93,11 @@ def _summarize_orchestration_trace(orch: Dict[str, Any]) -> None:
                     s3 = location.get("s3Location")
                     if isinstance(s3, dict):
                         src = s3.get("uri", "")
-                snippet = (text[:160] + "…") if len(text) > 160 else text
-                tag = f" ({src})" if src else ""
+                snippet = (text[:200] + "…") if len(text) > 200 else text
+                # Resaltar el archivo origen (ultimo segmento del URI)
+                tag = ""
+                if src:
+                    tag = f" [src={src.rsplit('/', 1)[-1]}]"
                 print(f"      {i}. {snippet}{tag}")
         elif obs.get("finalResponse"):
             fr = obs["finalResponse"]

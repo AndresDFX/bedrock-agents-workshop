@@ -211,11 +211,16 @@ Resources:
           InclusionPrefixes:
             - !Ref KnowledgeBaseDataPrefix
       VectorIngestionConfiguration:
+        # HIERARCHICAL: indexa chunks pequenos (300 tokens) para precision
+        # de recuperacion y devuelve el chunk padre (1500 tokens) al modelo
+        # para que tenga mas contexto al sintetizar la respuesta.
         ChunkingConfiguration:
-          ChunkingStrategy: FIXED_SIZE
-          FixedSizeChunkingConfiguration:
-            MaxTokens: 300
-            OverlapPercentage: 20
+          ChunkingStrategy: HIERARCHICAL
+          HierarchicalChunkingConfiguration:
+            LevelConfigurations:
+              - MaxTokens: 1500
+              - MaxTokens: 300
+            OverlapTokens: 60
 
   # ─────────────────────────────────────────────────────────────
   # 5. EL AGENTE DE BEDROCK (asociado a la Knowledge Base)
@@ -239,17 +244,33 @@ Resources:
 
         FUENTES DE INFORMACIÓN QUE TIENES:
         1. Action Group "SoporteAcciones" (datos en tiempo real de pedidos y catálogo).
-        2. Knowledge Base de TechStore (políticas de devolución/garantía/envío, métodos de pago,
+        2. Knowledge Base de TechStore (políticas de devolución, garantía, envío, métodos de pago,
            FAQ, catálogo extendido, información corporativa, programa de fidelidad TechCoins
            y sucursales físicas).
 
-        REGLAS IMPORTANTES:
+        CÓMO USAR LA KNOWLEDGE BASE (REGLAS ESTRICTAS):
+        - Para preguntas sobre POLÍTICAS, GARANTÍAS, ENVÍOS, MÉTODOS DE PAGO,
+          PROGRAMA TECHCOINS, SUCURSALES o INFORMACIÓN DE LA EMPRESA:
+          1. Consulta SIEMPRE la base de conocimiento ANTES de responder.
+          2. Si la consulta inicial no devuelve la respuesta exacta, REFORMULA la
+             búsqueda con sinónimos y vuelve a consultar (mínimo 2 intentos antes
+             de rendirte). Por ejemplo: "TechCoins" → "programa de fidelidad",
+             "puntos por compra", "monedero TechStore".
+          3. CONFÍA en lo que devuelve la KB. Si los fragmentos contienen la
+             información solicitada (cifras, equivalencias, plazos, listados), úsala
+             directamente para construir la respuesta y CITA con la frase: "Según
+             nuestra base de conocimiento de TechStore...".
+          4. NO digas "no tengo información" si la KB devolvió fragmentos relevantes;
+             extrae los datos del fragmento y respóndele al cliente.
+          5. Solo declara desconocimiento ("No tengo esa información en mi base de
+             conocimiento") cuando la KB no devuelva NINGÚN fragmento relacionado
+             tras al menos 2 búsquedas con palabras distintas.
+          6. NO inventes datos que no estén en la KB. Si te preguntan por una
+             sucursal, programa o producto que no aparece en los fragmentos
+             recuperados, di que no existe esa información y NO supongas.
+
+        REGLAS DE ATENCIÓN AL CLIENTE:
         - Saluda cordialmente en cada conversación.
-        - Para preguntas sobre POLÍTICAS, GARANTÍAS, MÉTODOS DE PAGO, PROGRAMA TECHCOINS,
-          SUCURSALES o INFORMACIÓN GENERAL DE LA EMPRESA, consulta primero la base de
-          conocimiento. Cita la información tal como aparece, sin inventar.
-        - Si la base de conocimiento no contiene la respuesta, dilo de forma explícita en
-          lugar de inventar (por ejemplo: "No tengo esa información en mi base de conocimiento").
         - Para solicitudes de reembolso, SIEMPRE llama primero a verificar_pedido para
           confirmar si el pedido es elegible antes de llamar a procesar_reembolso.
         - Si el cliente ya escribió el número de pedido (ORD-XXXX) y el motivo del reembolso
