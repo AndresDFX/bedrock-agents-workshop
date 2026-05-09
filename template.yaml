@@ -127,7 +127,7 @@ Resources:
                 Description: >
                   Inicia el proceso de reembolso para un pedido elegible.
                   Solo funciona si el pedido fue entregado hace menos de 30 días.
-                RequireConfirmation: true
+                RequireConfirmation: ENABLED
                 Parameters:
                   numero_pedido:
                     Description: "Número del pedido a reembolsar"
