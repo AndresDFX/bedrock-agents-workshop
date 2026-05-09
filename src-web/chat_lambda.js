@@ -1,10 +1,11 @@
 /**
- * Lambda Function URL + RESPONSE_STREAM (solo runtime Node.js gestionado).
+ * HTTP API (API Gateway) + Lambda proxy (payload format 2.0).
  *
- * Expone POST JSON: { "prompt": "...", "mode": "chatbot" | "agent" }
- * - chatbot: invoke_model_with_response_stream (mismo system prompt que invoke_chatbot.py)
- * - agent: invoke_agent streaming (enableTrace false). Si aparece returnControl,
- *   se informa en texto (demo simplificada sin confirmación desde el navegador).
+ * Integración tipo AWS_PROXY en modo BUFFERED: acumula el stream de Bedrock
+ * en Lambda y devuelve text/plain. Evita el formato de streaming propio de
+ * Function URLs y el error 403 de invocación pública en algunas cuentas.
+ *
+ * POST JSON: { "prompt": "...", "mode": "chatbot" | "agent" }
  */
 "use strict";
 
@@ -31,7 +32,14 @@ function region() {
   return process.env.AWS_REGION || "us-east-1";
 }
 
-async function streamHaiku(prompt, responseStream) {
+function plainHeaders() {
+  return {
+    "content-type": "text/plain; charset=utf-8",
+    "access-control-allow-origin": "*",
+  };
+}
+
+async function collectHaikuText(prompt) {
   const client = new BedrockRuntimeClient({ region: region() });
   const body = JSON.stringify({
     anthropic_version: "bedrock-2023-05-31",
@@ -54,6 +62,7 @@ async function streamHaiku(prompt, responseStream) {
   });
 
   const resp = await client.send(cmd);
+  const parts = [];
   for await (const part of resp.body) {
     if (part.internalServerException) {
       throw new Error(JSON.stringify(part.internalServerException));
@@ -70,17 +79,17 @@ async function streamHaiku(prompt, responseStream) {
     }
     if (payload.type === "content_block_delta" && payload.delta?.type === "text_delta") {
       const t = payload.delta.text || "";
-      if (t) responseStream.write(t);
+      if (t) parts.push(t);
     }
   }
+  return parts.join("");
 }
 
-async function streamAgent(prompt, responseStream) {
+async function collectAgentText(prompt) {
   const agentId = process.env.AGENT_ID;
   const aliasId = process.env.ALIAS_ID;
   if (!agentId || !aliasId) {
-    responseStream.write("Error: faltan variables de entorno AGENT_ID o ALIAS_ID.\n");
-    return;
+    return "Error: faltan variables de entorno AGENT_ID o ALIAS_ID.\n";
   }
 
   const client = new BedrockAgentRuntimeClient({ region: region() });
@@ -97,17 +106,17 @@ async function streamAgent(prompt, responseStream) {
   const resp = await client.send(cmd);
   const completion = resp.completion;
   if (!completion) {
-    responseStream.write("(sin stream completion)\n");
-    return;
+    return "(sin stream completion)\n";
   }
 
+  const parts = [];
   for await (const event of completion) {
     if (event.chunk?.bytes) {
       const text = Buffer.from(event.chunk.bytes).toString("utf8");
-      if (text) responseStream.write(text);
+      if (text) parts.push(text);
     }
     if (event.returnControl) {
-      responseStream.write(
+      parts.push(
         "\n\n[Pausa] El agente solicitaría confirmación humana en este punto (RequireConfirmation). Demo web simplificada: no se envía CONFIRM desde el navegador.\n"
       );
       break;
@@ -122,35 +131,23 @@ async function streamAgent(prompt, responseStream) {
       throw new Error(JSON.stringify(event.badGatewayException));
     }
   }
+  return parts.join("");
 }
 
-async function handle(event, responseStream) {
-  const http = event.requestContext?.http || {};
-  const method = http.method || "POST";
+exports.handler = async (event) => {
+  const method = event.requestContext?.http?.method || "POST";
 
   if (method === "OPTIONS") {
-    const meta = {
+    return {
       statusCode: 204,
       headers: {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "POST, OPTIONS",
-        "Access-Control-Allow-Headers": "content-type",
+        ...plainHeaders(),
+        "access-control-allow-methods": "GET,POST,OPTIONS",
+        "access-control-allow-headers": "content-type",
       },
+      body: "",
     };
-    responseStream = awslambda.HttpResponseStream.from(responseStream, meta);
-    responseStream.end();
-    await responseStream.finished?.();
-    return;
   }
-
-  const meta = {
-    statusCode: 200,
-    headers: {
-      "Content-Type": "text/plain; charset=utf-8",
-      "Access-Control-Allow-Origin": "*",
-    },
-  };
-  responseStream = awslambda.HttpResponseStream.from(responseStream, meta);
 
   let bodyRaw = event.body;
   if (event.isBase64Encoded && bodyRaw) {
@@ -161,39 +158,48 @@ async function handle(event, responseStream) {
   try {
     payload = bodyRaw ? JSON.parse(bodyRaw) : {};
   } catch {
-    responseStream.write("Error: body JSON inválido.\n");
-    responseStream.end();
-    await responseStream.finished?.();
-    return;
+    return {
+      statusCode: 400,
+      headers: plainHeaders(),
+      body: "Error: body JSON inválido.\n",
+    };
   }
 
   const prompt = String(payload.prompt || "").trim();
   const mode = String(payload.mode || "chatbot").toLowerCase();
 
   if (!prompt) {
-    responseStream.write("Error: falta el campo prompt.\n");
-    responseStream.end();
-    await responseStream.finished?.();
-    return;
+    return {
+      statusCode: 400,
+      headers: plainHeaders(),
+      body: "Error: falta el campo prompt.\n",
+    };
   }
 
   try {
+    let text;
     if (mode === "chatbot") {
-      await streamHaiku(prompt, responseStream);
+      text = await collectHaikuText(prompt);
     } else if (mode === "agent") {
-      await streamAgent(prompt, responseStream);
+      text = await collectAgentText(prompt);
     } else {
-      responseStream.write('Error: mode debe ser "chatbot" o "agent".\n');
+      return {
+        statusCode: 400,
+        headers: plainHeaders(),
+        body: 'Error: mode debe ser "chatbot" o "agent".\n',
+      };
     }
+    return {
+      statusCode: 200,
+      headers: plainHeaders(),
+      body: text ?? "",
+    };
   } catch (err) {
     const msg = err && err.message ? err.message : String(err);
-    responseStream.write(`\n❌ Error: ${msg}\n`);
+    return {
+      statusCode: 500,
+      headers: plainHeaders(),
+      body: `\n❌ Error: ${msg}\n`,
+    };
   }
-
-  responseStream.end();
-  await responseStream.finished?.();
-}
-
-exports.handler = awslambda.streamifyResponse(async (event, responseStream, _context) => {
-  await handle(event, responseStream);
-});
+};

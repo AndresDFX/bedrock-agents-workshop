@@ -135,8 +135,9 @@ El template CloudFormation crea los recursos necesarios:
 10. **Bedrock Agent Alias** — endpoint estable para invocar el agente.
 11. **Bucket S3 + política de lectura pública** — aloja la página estática `web/`
     (solo taller / demo).
-12. **Lambda `*-chat-demo` + Function URL (`RESPONSE_STREAM`)** — recibe el POST con el prompt,
-    llama a Bedrock en modo Haiku directo o modo agente y devuelve texto en streaming.
+12. **Lambda `*-chat-demo` + HTTP API (API Gateway)** — integración proxy `AWS_PROXY` (respuesta
+    **buffered** hacia el cliente). Bedrock sigue usando streaming dentro de Lambda; el navegador
+    recibe el cuerpo completo vía HTTPS (`execute-api`).
 
 💡 **Nota arquitectónica:** El rol del agente DEBE llamarse
 `AmazonBedrockExecutionRoleForAgents_*` — es un requisito de AWS Bedrock. Lo
@@ -181,7 +182,7 @@ El script:
 7. Ejecuta `aws cloudformation deploy` con el stack `agente-soporte`
    (incluye S3 Vectors, KB, DataSource, bucket web y Lambda demo).
 8. **Publica el sitio**: reemplaza `__FUNCTION_URL__` en `web/app.js` por la
-   **Lambda Function URL** del stack y hace `aws s3 sync` al bucket del website.
+   **URL del HTTP API** del stack (`ChatApiUrl`) y hace `aws s3 sync` al bucket del website.
 9. **Dispara la ingesta** (`StartIngestionJob`) y espera a que termine.
 10. Genera `agent.env` con `AGENT_ID`, `ALIAS_ID`, `KNOWLEDGE_BASE_ID` y
     `DATA_SOURCE_ID` listos para usar.
@@ -210,30 +211,33 @@ source agent.env
    y las tres funciones; en `procesar_reembolso` aparecerá **"User confirmation"**
    activado.
 
-## 2.2 Probar desde el navegador (Haiku vs agente en streaming)
+## 2.2 Probar desde el navegador (Haiku vs agente)
 
 Al finalizar `bash deploy.sh`, el script imprime una línea **Frontend URL** con el *website endpoint*
 HTTP del bucket S3 (sin CloudFront). Ábrela en el navegador:
 
 1. Escribe un prompt (por ejemplo *«¿Cómo funciona el programa TechCoins?»*).
 2. Pulsa **Comparar**. Verás dos columnas en paralelo:
-   - **Haiku (chatbot):** `invoke_model_with_response_stream` con el mismo *system prompt* que `invoke_chatbot.py`.
-   - **Agente Bedrock:** `invoke_agent` en streaming con herramientas Lambda + Knowledge Base.
+   - **Haiku (chatbot):** `invoke_model_with_response_stream` (acumulado en Lambda) con el mismo *system prompt* que `invoke_chatbot.py`.
+   - **Agente Bedrock:** `invoke_agent` (stream consumido en Lambda) con herramientas Lambda + Knowledge Base.
 
-### Streaming en Lambda y runtime Node.js
+### HTTP API en lugar de Function URL
 
-Amazon Lambda solo habilita **RESPONSE_STREAM** en runtimes **Node.js** gestionados.
-Por eso la función publicada es **`src-web/chat_lambda.js`** (renombrada a `index.js` dentro de
-`chat_lambda.zip`). No requiere `npm install`: el runtime Lambda **Node.js 20** ya incluye
-`@aws-sdk/client-bedrock-runtime` y `@aws-sdk/client-bedrock-agent-runtime`. El archivo
-**`src-web/chat_lambda.py`** ofrece la misma lógica para **pruebas locales** en CLI
-(`python chat_lambda.py …`), pero **no** es el artefacto que ejecuta la Function URL.
+El front llama al backend en **`https://<api-id>.execute-api.<region>.amazonaws.com/`** (output
+`ChatApiUrl`). Así evitamos **403** por políticas de **Function URL** pública en algunas cuentas.
+La integración es **proxy en modo buffered**: la UI sigue usando `fetch` + `ReadableStream`, pero el
+navegador suele recibir **un único chunk** cuando ya terminó el modelo.
+
+El código publicado es **`src-web/chat_lambda.js`** (empaquetado como `index.js`). No requiere `npm install`:
+el runtime Lambda **Node.js 20** ya incluye `@aws-sdk/client-bedrock-runtime` y
+`@aws-sdk/client-bedrock-agent-runtime`. El archivo **`src-web/chat_lambda.py`** sirve para **pruebas
+locales** en CLI (`python chat_lambda.py …`), pero **no** es lo que despliega CloudFormation.
 
 ### Seguridad (deuda técnica del taller)
 
-La Lambda Function URL está configurada con **`AuthType: NONE`**: cualquiera que conozca la URL puede
-invocar Bedrock en tu cuenta. Es aceptable en una sesión controlada de taller; en producción deberías
-proteger el endpoint (p. ej. JWT/API Gateway, `AWS_IAM`, Amazon Cognito, WAF, etc.).
+La ruta **`$default`** del HTTP API está **sin autorizador** (`AuthorizationType: NONE`): cualquiera con la
+URL puede invocar Bedrock vía tu Lambda. Es aceptable en sesión controlada; en producción añade
+Cognito/JWT, IAM, WAF, etc.
 
 ### Confirmaciones (`RequireConfirmation`)
 

@@ -416,29 +416,55 @@ Resources:
         S3Bucket: !Ref BucketName
         S3Key: !Ref WebLambdaS3Key
 
-  ChatLambdaUrl:
-    Type: AWS::Lambda::Url
+  # Demo web vía HTTP API (API Gateway): evita Function URL pública y 403 en algunas cuentas.
+  ChatHttpApi:
+    Type: AWS::ApiGatewayV2::Api
     Properties:
-      TargetFunctionArn: !GetAtt ChatLambda.Arn
-      AuthType: NONE
-      InvokeMode: RESPONSE_STREAM
-      Cors:
-        AllowHeaders:
-          - content-type
-        AllowMethods:
-          - '*'
+      Name: !Sub "${ProjectName}-chat-http"
+      Description: Demo taller — API HTTP publica hacia Lambda chat (proxy BUFFERED).
+      ProtocolType: HTTP
+      CorsConfiguration:
+        AllowCredentials: false
         AllowOrigins:
+          - '*'
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        AllowHeaders:
           - '*'
         MaxAge: 86400
 
-  ChatLambdaUrlPermission:
-    Type: AWS::Lambda::Permission
-    DependsOn: ChatLambdaUrl
+  ChatHttpApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
     Properties:
-      FunctionName: !GetAtt ChatLambda.Arn
-      Action: lambda:InvokeFunctionUrl
-      Principal: '*'
-      FunctionUrlAuthType: NONE
+      ApiId: !Ref ChatHttpApi
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${ChatLambda.Arn}/invocations
+      PayloadFormatVersion: '2.0'
+
+  ChatHttpApiRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ChatHttpApi
+      RouteKey: $default
+      AuthorizationType: NONE
+      Target: !Join ['/', ['integrations', !Ref ChatHttpApiIntegration]]
+
+  ChatHttpApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      ApiId: !Ref ChatHttpApi
+      StageName: $default
+      AutoDeploy: true
+
+  ChatHttpApiLambdaPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref ChatLambda
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${ChatHttpApi}/*/*/*'
 
 # ─────────────────────────────────────────────────────────────
 # OUTPUTS: valores que necesitarás para probar el agente
@@ -476,6 +502,6 @@ Outputs:
     Value: !Sub "http://${WebFrontendBucket}.s3-website-${AWS::Region}.amazonaws.com/"
     Description: URL HTTP del website S3 (sin CloudFront)
 
-  ChatFunctionUrl:
-    Value: !GetAtt ChatLambdaUrl.FunctionUrl
-    Description: Lambda Function URL (RESPONSE_STREAM) para la demo web
+  ChatApiUrl:
+    Value: !Sub 'https://${ChatHttpApi}.execute-api.${AWS::Region}.amazonaws.com/'
+    Description: URL del HTTP API (API Gateway) — front publico del chat demo

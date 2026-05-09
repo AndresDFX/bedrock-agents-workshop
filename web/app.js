@@ -1,5 +1,5 @@
 /**
- * Placeholder sustituido por deploy.sh tras CloudFormation (Function URL).
+ * URL del backend (HTTP API / API Gateway) inyectada por deploy.sh.
  *
  * IMPORTANTE: deploy.sh hace un replace LITERAL de la cadena __FUNCTION_URL__
  * en TODO el archivo. Por eso esa cadena solo debe aparecer UNA vez (en la
