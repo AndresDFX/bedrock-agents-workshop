@@ -173,10 +173,17 @@ def _build_confirmation_session_state(
     return_control: Dict[str, Any],
     confirmation_state: str,
 ) -> Dict[str, Any]:
-    """confirmation_state: CONFIRM o DENY."""
+    """confirmation_state: CONFIRM o DENY.
+
+    NOTA: La muestra oficial de AWS para User Confirmation incluye un
+    responseBody con TEXT.body aunque sea vacío. Sin él, la API responde
+    con ValidationException ("issue with the response body…").
+    """
     inv_id = return_control.get("invocationId")
     if not inv_id:
         raise ValueError("returnControl sin invocationId")
+
+    empty_body = {"TEXT": {"body": ""}}
 
     results: List[Dict[str, Any]] = []
     for inp in return_control.get("invocationInputs") or []:
@@ -190,6 +197,7 @@ def _build_confirmation_session_state(
                         "actionGroup": fin["actionGroup"],
                         "function": fin["function"],
                         "confirmationState": confirmation_state,
+                        "responseBody": empty_body,
                     }
                 }
             )
@@ -203,6 +211,7 @@ def _build_confirmation_session_state(
                         "apiPath": ain.get("apiPath", ""),
                         "httpMethod": ain.get("httpMethod", ""),
                         "confirmationState": confirmation_state,
+                        "responseBody": empty_body,
                     }
                 }
             )
@@ -235,7 +244,6 @@ def _invoke_agent_once(
     )
     if session_state is not None:
         kwargs["sessionState"] = session_state
-        kwargs["inputText"] = ""
     else:
         kwargs["inputText"] = input_text
 
@@ -250,14 +258,12 @@ def _confirm_interactively(auto: Optional[str]) -> str:
         return auto
     try:
         ans = input(
-            "¿Confirmas ejecutar la acción propuesta por el agente? [s/N/d=sí/d=no]: "
+            "¿Confirmar la acción propuesta por el agente? [s/N]: "
         ).strip().lower()
     except EOFError:
         return "DENY"
-    if ans in ("s", "si", "sí", "y", "yes"):
+    if ans and ans[0] in ("s", "y"):
         return "CONFIRM"
-    if ans in ("d", "deny", "no", "n"):
-        return "DENY"
     return "DENY"
 
 
