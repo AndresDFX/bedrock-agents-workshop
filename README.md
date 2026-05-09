@@ -85,6 +85,8 @@ cd bedrock-agents-workshop
 ├── test.sh                 → Script de pruebas (escenarios, trace, chat, compare, rag…)
 ├── invoke_agent.py         → Cliente boto3 que invoca al agente (streaming + trace + confirmación + KB)
 ├── invoke_chatbot.py       → Haiku directo sin herramientas ni RAG (contraste «chatbot»)
+├── web/                    → Sitio estático (S3 website): UI comparativa en dos columnas
+├── src-web/                → Lambda demo web: streaming Haiku vs agente (`chat_lambda.js` + CLI Python opcional)
 ├── src/
 │   └── lambda_function.py  → Herramientas del agente (lógica Python para pedidos y catálogo)
 └── kb-data/                → Documentos seed que se indexan en la Knowledge Base
@@ -131,6 +133,10 @@ El template CloudFormation crea los recursos necesarios:
 9. **Bedrock Agent** — orquestador que razona y decide qué fuente consultar
    (`Lambda` o `KnowledgeBase`).
 10. **Bedrock Agent Alias** — endpoint estable para invocar el agente.
+11. **Bucket S3 + política de lectura pública** — aloja la página estática `web/`
+    (solo taller / demo).
+12. **Lambda `*-chat-demo` + Function URL (`RESPONSE_STREAM`)** — recibe el POST con el prompt,
+    llama a Bedrock en modo Haiku directo o modo agente y devuelve texto en streaming.
 
 💡 **Nota arquitectónica:** El rol del agente DEBE llamarse
 `AmazonBedrockExecutionRoleForAgents_*` — es un requisito de AWS Bedrock. Lo
@@ -167,13 +173,18 @@ El script:
 
 1. Crea (si no existe) el bucket `workshop-agentes-<ACCOUNT_ID>`.
 2. Empaqueta `src/lambda_function.py` en `lambda.zip`.
-3. Sube el ZIP a S3.
-4. **Sincroniza** los documentos `kb-data/*.md` a `s3://.../kb-data/`.
-5. Ejecuta `aws cloudformation deploy` con el stack `agente-soporte`
-   (incluye S3 Vectors, KB y DataSource).
-6. **Dispara la ingesta** (`StartIngestionJob`) y espera a que termine.
-7. Genera `agent.env` con `AGENT_ID`, `ALIAS_ID`, `KNOWLEDGE_BASE_ID` y
-   `DATA_SOURCE_ID` listos para usar.
+3. Sube `lambda.zip` a S3.
+4. Ejecuta `npm install` + **esbuild** sobre `src-web/chat_lambda.js` y genera
+   `chat_lambda.zip` (un solo `index.js` con el SDK de Bedrock embebido).
+5. Sube `chat_lambda.zip` a S3 (parámetro `WebLambdaS3Key`).
+6. **Sincroniza** los documentos `kb-data/*.md` a `s3://.../kb-data/`.
+7. Ejecuta `aws cloudformation deploy` con el stack `agente-soporte`
+   (incluye S3 Vectors, KB, DataSource, bucket web y Lambda demo).
+8. **Publica el sitio**: reemplaza `__FUNCTION_URL__` en `web/app.js` por la
+   **Lambda Function URL** del stack y hace `aws s3 sync` al bucket del website.
+9. **Dispara la ingesta** (`StartIngestionJob`) y espera a que termine.
+10. Genera `agent.env` con `AGENT_ID`, `ALIAS_ID`, `KNOWLEDGE_BASE_ID` y
+    `DATA_SOURCE_ID` listos para usar.
 
 El despliegue tarda ~3-5 minutos (la primera vez la ingesta puede tomar 60-90
 segundos extra). Al terminar, carga las variables en tu shell:
@@ -198,6 +209,36 @@ source agent.env
 3. Dentro del builder verás la sección **"Action groups"** con `SoporteAcciones`
    y las tres funciones; en `procesar_reembolso` aparecerá **"User confirmation"**
    activado.
+
+## 2.2 Probar desde el navegador (Haiku vs agente en streaming)
+
+Al finalizar `bash deploy.sh`, el script imprime una línea **Frontend URL** con el *website endpoint*
+HTTP del bucket S3 (sin CloudFront). Ábrela en el navegador:
+
+1. Escribe un prompt (por ejemplo *«¿Cómo funciona el programa TechCoins?»*).
+2. Pulsa **Comparar**. Verás dos columnas en paralelo:
+   - **Haiku (chatbot):** `invoke_model_with_response_stream` con el mismo *system prompt* que `invoke_chatbot.py`.
+   - **Agente Bedrock:** `invoke_agent` en streaming con herramientas Lambda + Knowledge Base.
+
+### Streaming en Lambda y runtime Node.js
+
+Amazon Lambda solo habilita **RESPONSE_STREAM** en runtimes **Node.js** gestionados.
+Por eso la función publicada es **`src-web/chat_lambda.js`** (empaquetada como `index.js`
+dentro de `chat_lambda.zip` mediante esbuild). El archivo **`src-web/chat_lambda.py`**
+ofrece la misma lógica para **pruebas locales** en CLI (`python chat_lambda.py …`), pero **no**
+es el artefacto que ejecuta la Function URL.
+
+### Seguridad (deuda técnica del taller)
+
+La Lambda Function URL está configurada con **`AuthType: NONE`**: cualquiera que conozca la URL puede
+invocar Bedrock en tu cuenta. Es aceptable en una sesión controlada de taller; en producción deberías
+proteger el endpoint (p. ej. JWT/API Gateway, `AWS_IAM`, Amazon Cognito, WAF, etc.).
+
+### Confirmaciones (`RequireConfirmation`)
+
+Si el agente llega a un paso **human-in-the-loop**, la demo web solo muestra un mensaje informativo
+en el stream (no hay botón **CONFIRM** en esta iteración). Para el flujo completo usa `invoke_agent.py`
+(interactivo o `AUTO_CONFIRM=CONFIRM`).
 
 ---
 

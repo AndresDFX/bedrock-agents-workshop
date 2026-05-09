@@ -1,0 +1,163 @@
+:root {
+  color-scheme: light dark;
+  --bg: #0f1419;
+  --panel: #1a2332;
+  --border: #2d3a4d;
+  --text: #e8eef7;
+  --muted: #9fb0c8;
+  --accent: #6ea8fe;
+  --ok: #3ddc97;
+}
+
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg: #f6f8fb;
+    --panel: #ffffff;
+    --border: #d6deea;
+    --text: #1b2430;
+    --muted: #5c6b80;
+    --accent: #1f6feb;
+    --ok: #067447;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.45;
+}
+
+.hdr {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.25rem 1rem 0;
+}
+
+.hdr h1 {
+  margin: 0 0 0.35rem;
+  font-size: 1.35rem;
+}
+
+.lead {
+  margin: 0;
+  color: var(--muted);
+  max-width: 75ch;
+}
+
+.controls {
+  max-width: 1100px;
+  margin: 1rem auto;
+  padding: 0 1rem;
+}
+
+.controls label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+  font-size: 1rem;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.65rem;
+}
+
+button {
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--accent);
+  color: #fff;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 700;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.cols {
+  max-width: 1100px;
+  margin: 0 auto 2rem;
+  padding: 0 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+@media (max-width: 860px) {
+  .cols {
+    grid-template-columns: 1fr;
+  }
+}
+
+.col {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background: var(--panel);
+}
+
+.col h2 {
+  margin: 0 0 0.35rem;
+  font-size: 1.05rem;
+}
+
+.hint {
+  margin: 0 0 0.5rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+}
+
+.status {
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
+.status.thinking.active {
+  color: var(--ok);
+}
+
+pre.out {
+  margin: 0.5rem 0 0;
+  min-height: 220px;
+  max-height: 52vh;
+  overflow: auto;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px dashed var(--border);
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.92rem;
+}
+
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.86em;
+}
+
+.ftr {
+  max-width: 1100px;
+  margin: 2rem auto 1rem;
+  padding: 0 1rem;
+  color: var(--muted);
+}

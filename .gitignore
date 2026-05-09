@@ -1,5 +1,6 @@
 # Lambda deployment artifacts
 lambda.zip
+chat_lambda.zip
 packaged.yaml
 
 # Outputs locales del despliegue
@@ -8,6 +9,12 @@ respuesta.json
 
 # Python cache
 __pycache__/
+
+# Bundle temporal Lambda demo web (esbuild)
+src-web/index.js
+
+# npm: se instala en CloudShell/local con deploy.sh; no versionar (Windows: rutas muy largas)
+node_modules/
 *.pyc
 *.pyo
 

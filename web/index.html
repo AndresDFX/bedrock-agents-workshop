@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>TechStore — Chatbot Haiku vs Agente Bedrock</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <header class="hdr">
+      <h1>Chatbot vs agente autónomo</h1>
+      <p class="lead">
+        Misma pregunta, dos columnas: <strong>Haiku solo</strong> (sin herramientas ni RAG)
+        frente al <strong>agente Bedrock</strong> con Action Groups + Knowledge Base. Las
+        respuestas llegan en <em>streaming</em>.
+      </p>
+    </header>
+
+    <section class="controls">
+      <label for="prompt">Tu mensaje</label>
+      <textarea
+        id="prompt"
+        rows="4"
+        placeholder="Ej.: ¿Cómo funciona el programa TechCoins?&#10;Ej.: Quiero un reembolso para ORD-1001"
+      ></textarea>
+      <div class="row">
+        <button id="compare" type="button">Comparar</button>
+        <span id="global-status" class="status" aria-live="polite"></span>
+      </div>
+    </section>
+
+    <main class="cols">
+      <section class="col" aria-labelledby="t-chatbot">
+        <h2 id="t-chatbot">Haiku (chatbot)</h2>
+        <p class="hint">Bedrock <code>invoke_model_with_response_stream</code> — mismo system prompt que <code>invoke_chatbot.py</code>.</p>
+        <div id="st-chatbot" class="status thinking">Listo.</div>
+        <pre id="out-chatbot" class="out" tabindex="0"></pre>
+      </section>
+      <section class="col" aria-labelledby="t-agent">
+        <h2 id="t-agent">Agente Bedrock</h2>
+        <p class="hint"><code>invoke_agent</code> streaming — herramientas Lambda + RAG.</p>
+        <div id="st-agent" class="status thinking">Listo.</div>
+        <pre id="out-agent" class="out" tabindex="0"></pre>
+      </section>
+    </main>
+
+    <footer class="ftr">
+      <small>Taller TechStore · demo HTTP en bucket S3 website · sin autenticación en Function URL</small>
+    </footer>
+
+    <script src="app.js"></script>
+  </body>
+</html>

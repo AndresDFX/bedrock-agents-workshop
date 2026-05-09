@@ -39,6 +39,21 @@ rm -f lambda.zip
 echo "==> Subiendo lambda.zip a s3://${BUCKET_NAME}/..."
 aws s3 cp lambda.zip "s3://${BUCKET_NAME}/lambda.zip" --region "${REGION}" >/dev/null
 
+echo "==> Empaquetando Lambda demo web (chat_lambda.zip, Node.js + esbuild)..."
+rm -f chat_lambda.zip
+(
+  cd src-web
+  npm install --omit=dev --no-audit --no-fund
+  # RESPONSE_STREAM solo está soportado en Node gestionado; empaquetamos dependencias en un único index.js
+  npx --yes esbuild@0.25.0 chat_lambda.js \
+    --bundle --platform=node --target=node22 --format=cjs \
+    --outfile=index.js --log-level=warning
+  zip -q ../chat_lambda.zip index.js
+  rm -f index.js
+)
+echo "==> Subiendo chat_lambda.zip a s3://${BUCKET_NAME}/..."
+aws s3 cp chat_lambda.zip "s3://${BUCKET_NAME}/chat_lambda.zip" --region "${REGION}" >/dev/null
+
 KB_PREFIX="kb-data/"
 if [ -d "kb-data" ]; then
   echo "==> Subiendo documentos seed de la KB a s3://${BUCKET_NAME}/${KB_PREFIX}..."
@@ -63,6 +78,7 @@ aws cloudformation deploy \
       ProjectName="${PROJECT_NAME}" \
       KnowledgeBaseDataPrefix="${KB_PREFIX}" \
       AliasUpdateToken="${ALIAS_TOKEN}" \
+      WebLambdaS3Key="chat_lambda.zip" \
   --region "${REGION}"
 
 echo "==> Obteniendo outputs..."
@@ -81,6 +97,43 @@ KB_ID=$(aws cloudformation describe-stacks \
 DS_ID=$(aws cloudformation describe-stacks \
   --stack-name "${STACK_NAME}" --region "${REGION}" \
   --query "Stacks[0].Outputs[?OutputKey=='DataSourceId'].OutputValue" --output text)
+
+CHAT_URL=$(aws cloudformation describe-stacks \
+  --stack-name "${STACK_NAME}" --region "${REGION}" \
+  --query "Stacks[0].Outputs[?OutputKey=='ChatFunctionUrl'].OutputValue" --output text)
+
+FRONT_BUCKET=$(aws cloudformation describe-stacks \
+  --stack-name "${STACK_NAME}" --region "${REGION}" \
+  --query "Stacks[0].Outputs[?OutputKey=='FrontendBucket'].OutputValue" --output text)
+
+FRONT_URL=$(aws cloudformation describe-stacks \
+  --stack-name "${STACK_NAME}" --region "${REGION}" \
+  --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" --output text)
+
+if [ -n "${FRONT_BUCKET}" ] && [ "${FRONT_BUCKET}" != "None" ] && [ -n "${CHAT_URL}" ] && [ "${CHAT_URL}" != "None" ]; then
+  echo "==> Publicando sitio web estático en s3://${FRONT_BUCKET}/ ..."
+  TMP_JS="$(mktemp)"
+  export CHAT_URL TMP_JS
+  python3 - <<'PY'
+import os
+from pathlib import Path
+chat_url = os.environ["CHAT_URL"]
+tmp = Path(os.environ["TMP_JS"])
+src = Path("web/app.js").read_text(encoding="utf-8")
+tmp.write_text(src.replace("__FUNCTION_URL__", chat_url), encoding="utf-8")
+PY
+  aws s3 sync web/ "s3://${FRONT_BUCKET}/" \
+    --region "${REGION}" \
+    --delete \
+    --exclude "app.js" >/dev/null
+  aws s3 cp "${TMP_JS}" "s3://${FRONT_BUCKET}/app.js" \
+    --region "${REGION}" \
+    --content-type "application/javascript; charset=utf-8" >/dev/null
+  rm -f "${TMP_JS}"
+  echo "    Sitio sincronizado."
+else
+  echo "⚠️  No se pudo resolver FrontendBucket / ChatFunctionUrl; omite subida del sitio web."
+fi
 
 # ─────────────────────────────────────────────────────────────
 # Ingesta inicial / re-ingesta (RAG)
@@ -134,6 +187,13 @@ echo "    Agent ID         : ${AGENT_ID}"
 echo "    Alias ID         : ${ALIAS_ID}"
 echo "    Knowledge Base   : ${KB_ID}"
 echo "    Data Source      : ${DS_ID}"
+if [ -n "${FRONT_URL}" ] && [ "${FRONT_URL}" != "None" ]; then
+  echo ""
+  echo "🌐 Frontend URL (sitio comparativo, HTTP): ${FRONT_URL}"
+fi
+if [ -n "${CHAT_URL}" ] && [ "${CHAT_URL}" != "None" ]; then
+  echo "    Lambda Function URL (streaming):         ${CHAT_URL}"
+fi
 echo ""
 echo "Para usar los IDs en tu shell actual, ejecuta:"
 echo "    source agent.env"

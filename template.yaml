@@ -29,6 +29,10 @@ Parameters:
       RoutingConfiguration, AWS crea una versión nueva del agente y apunta el
       Alias a ella, propagando los cambios en ActionGroups, instrucciones,
       RequireConfirmation y la asociación con la Knowledge Base.
+  WebLambdaS3Key:
+    Type: String
+    Default: chat_lambda.zip
+    Description: Clave S3 del ZIP de la Lambda demo web (Haiku vs agente, streaming)
 
 Resources:
 
@@ -337,6 +341,113 @@ Resources:
       AgentAliasName: produccion
       Description: !Sub "Alias produccion - actualizado token=${AliasUpdateToken}"
 
+  # ─────────────────────────────────────────────────────────────
+  # 7. DEMO WEB — Sitio estático S3 + Lambda Function URL (RESPONSE_STREAM)
+  # ─────────────────────────────────────────────────────────────
+  WebFrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "${ProjectName}-web-${AWS::AccountId}"
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      WebsiteConfiguration:
+        IndexDocument: index.html
+        ErrorDocument: index.html
+
+  WebFrontendBucketPublicAccessBlock:
+    Type: AWS::S3::BucketPublicAccessBlock
+    Properties:
+      Bucket: !Ref WebFrontendBucket
+      BlockPublicAcls: true
+      IgnorePublicAcls: true
+      BlockPublicPolicy: false
+      RestrictPublicBuckets: false
+
+  WebFrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    DependsOn: WebFrontendBucketPublicAccessBlock
+    Properties:
+      Bucket: !Ref WebFrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: PublicReadGetObject
+            Effect: Allow
+            Principal: '*'
+            Action: 's3:GetObject'
+            Resource: !Sub '${WebFrontendBucket.Arn}/*'
+
+  ChatLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-chat-demo-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: BedrockChatDemoInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                  - bedrock:InvokeAgent
+                Resource: '*'
+
+  ChatLambda:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - SupportAgentAlias
+    Properties:
+      FunctionName: !Sub "${ProjectName}-chat-demo"
+      Role: !GetAtt ChatLambdaRole.Arn
+      Handler: index.handler
+      Runtime: nodejs22.x
+      Timeout: 300
+      MemorySize: 512
+      Environment:
+        Variables:
+          AGENT_ID: !Ref SupportAgent
+          ALIAS_ID: !GetAtt SupportAgentAlias.AgentAliasId
+          BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
+      Code:
+        S3Bucket: !Ref BucketName
+        S3Key: !Ref WebLambdaS3Key
+
+  ChatLambdaUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt ChatLambda.Arn
+      AuthType: NONE
+      InvokeMode: RESPONSE_STREAM
+      Cors:
+        AllowCredentials: false
+        AllowHeaders:
+          - content-type
+        AllowMethods:
+          - POST
+          - OPTIONS
+        AllowOrigins:
+          - '*'
+        MaxAge: 86400
+
+  ChatLambdaUrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref ChatLambda
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
 # ─────────────────────────────────────────────────────────────
 # OUTPUTS: valores que necesitarás para probar el agente
 # ─────────────────────────────────────────────────────────────
@@ -364,3 +475,15 @@ Outputs:
   VectorBucketArn:
     Value: !GetAtt VectorBucket.VectorBucketArn
     Description: ARN del bucket nativo de S3 Vectors usado por la KB
+
+  FrontendBucket:
+    Value: !Ref WebFrontendBucket
+    Description: Bucket S3 del sitio web estático (demo comparativa chatbot vs agente)
+
+  FrontendUrl:
+    Value: !Sub "http://${WebFrontendBucket}.s3-website-${AWS::Region}.amazonaws.com/"
+    Description: URL HTTP del website S3 (sin CloudFront)
+
+  ChatFunctionUrl:
+    Value: !GetAtt ChatLambdaUrl.FunctionUrl
+    Description: Lambda Function URL (RESPONSE_STREAM) para la demo web
