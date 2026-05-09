@@ -211,16 +211,15 @@ Resources:
           InclusionPrefixes:
             - !Ref KnowledgeBaseDataPrefix
       VectorIngestionConfiguration:
-        # HIERARCHICAL: indexa chunks pequenos (300 tokens) para precision
-        # de recuperacion y devuelve el chunk padre (1500 tokens) al modelo
-        # para que tenga mas contexto al sintetizar la respuesta.
+        # IMPORTANTE: Bedrock NO permite cambiar ChunkingConfiguration despues de
+        # crear el DataSource (ni la estrategia, ni MaxTokens, ni OverlapPercentage).
+        # Si quieres probar HIERARCHICAL/SEMANTIC u otros valores, hay que recrear:
+        #   bash destroy.sh && bash deploy.sh
         ChunkingConfiguration:
-          ChunkingStrategy: HIERARCHICAL
-          HierarchicalChunkingConfiguration:
-            LevelConfigurations:
-              - MaxTokens: 1500
-              - MaxTokens: 300
-            OverlapTokens: 60
+          ChunkingStrategy: FIXED_SIZE
+          FixedSizeChunkingConfiguration:
+            MaxTokens: 300
+            OverlapPercentage: 20
 
   # ─────────────────────────────────────────────────────────────
   # 5. EL AGENTE DE BEDROCK (asociado a la Knowledge Base)

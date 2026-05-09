@@ -407,6 +407,22 @@ aws bedrock-agent start-ingestion-job \
   --data-source-id "${DATA_SOURCE_ID}"
 ```
 
+> ⚠️ **Limitación importante de Bedrock:**
+> No puedes cambiar la `ChunkingConfiguration` (estrategia, `MaxTokens`,
+> `OverlapPercentage`, etc.) de un `DataSource` ya creado — la API de
+> `UpdateDataSource` no lo permite, y CloudFormation responde con un
+> `UPDATE_ROLLBACK_COMPLETE`.
+>
+> Si quieres probar otra estrategia (`HIERARCHICAL`, `SEMANTIC`) o nuevos
+> valores de tokens/overlap, debes **recrear** el DataSource:
+>
+> ```bash
+> bash destroy.sh && bash deploy.sh
+> ```
+>
+> Esto borra el stack completo y lo crea desde cero con la nueva
+> configuración. La ingesta inicial vuelve a tardar ~60–90 s.
+
 ---
 
 # Paso 3.5: Actualizar un stack ya desplegado
