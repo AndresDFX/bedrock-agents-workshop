@@ -108,6 +108,47 @@ FRONT_URL=$(aws cloudformation describe-stacks \
   --stack-name "${STACK_NAME}" --region "${REGION}" \
   --query "Stacks[0].Outputs[?OutputKey=='FrontendUrl'].OutputValue" --output text)
 
+# ─────────────────────────────────────────────────────────────
+# RED DE SEGURIDAD para el demo web (Function URL + resource policy)
+#
+# Workshop = todo abierto. No confiamos en CFN para crear el Permission:
+#  1. Forzamos AuthType=NONE / InvokeMode=RESPONSE_STREAM / CORS=*
+#  2. Borramos el statement previo si existe
+#  3. Volvemos a crear lambda:InvokeFunctionUrl con Principal "*" y AuthType NONE
+# ─────────────────────────────────────────────────────────────
+CHAT_FN_NAME=$(aws cloudformation describe-stack-resources \
+  --stack-name "${STACK_NAME}" --region "${REGION}" \
+  --logical-resource-id ChatLambda \
+  --query "StackResources[0].PhysicalResourceId" --output text 2>/dev/null || true)
+
+if [ -n "${CHAT_FN_NAME}" ] && [ "${CHAT_FN_NAME}" != "None" ]; then
+  echo "==> [Workshop] Forzando Function URL abierta para ${CHAT_FN_NAME}..."
+
+  aws lambda update-function-url-config \
+    --function-name "${CHAT_FN_NAME}" \
+    --region "${REGION}" \
+    --auth-type NONE \
+    --invoke-mode RESPONSE_STREAM \
+    --cors '{"AllowOrigins":["*"],"AllowMethods":["*"],"AllowHeaders":["*"],"MaxAge":86400}' \
+    >/dev/null 2>&1 || echo "    (no se pudo actualizar config; quizá no hay URL aún)"
+
+  # Borra Sid previo si existía (con el nombre que usamos) y vuelve a crearlo
+  aws lambda remove-permission \
+    --function-name "${CHAT_FN_NAME}" \
+    --region "${REGION}" \
+    --statement-id FurlPublic >/dev/null 2>&1 || true
+
+  aws lambda add-permission \
+    --function-name "${CHAT_FN_NAME}" \
+    --region "${REGION}" \
+    --statement-id FurlPublic \
+    --action lambda:InvokeFunctionUrl \
+    --principal '*' \
+    --function-url-auth-type NONE >/dev/null 2>&1 \
+    && echo "    Permission FurlPublic re-creado." \
+    || echo "    ⚠️  No se pudo crear el permission (revisa permisos IAM de tu usuario)."
+fi
+
 if [ -n "${FRONT_BUCKET}" ] && [ "${FRONT_BUCKET}" != "None" ] && [ -n "${CHAT_URL}" ] && [ "${CHAT_URL}" != "None" ]; then
   echo "==> Publicando sitio web estático en s3://${FRONT_BUCKET}/ ..."
   TMP_JS="$(mktemp)"

@@ -387,15 +387,13 @@ Resources:
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
       Policies:
-        - PolicyName: BedrockChatDemoInvoke
+        # Workshop = totalmente abierto para Bedrock. NO usar en producción.
+        - PolicyName: BedrockChatDemoOpen
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action:
-                  - bedrock:InvokeModel
-                  - bedrock:InvokeModelWithResponseStream
-                  - bedrock:InvokeAgent
+                Action: 'bedrock:*'
                 Resource: '*'
 
   ChatLambda:
@@ -435,8 +433,9 @@ Resources:
 
   ChatLambdaUrlPermission:
     Type: AWS::Lambda::Permission
+    DependsOn: ChatLambdaUrl
     Properties:
-      FunctionName: !Ref ChatLambda
+      FunctionName: !GetAtt ChatLambda.Arn
       Action: lambda:InvokeFunctionUrl
       Principal: '*'
       FunctionUrlAuthType: NONE
