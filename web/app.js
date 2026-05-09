@@ -1,5 +1,10 @@
 /**
  * Placeholder sustituido por deploy.sh tras CloudFormation (Function URL).
+ *
+ * IMPORTANTE: deploy.sh hace un replace LITERAL de la cadena __FUNCTION_URL__
+ * en TODO el archivo. Por eso esa cadena solo debe aparecer UNA vez (en la
+ * constante de abajo). Para detectar que aún no fue reemplazada, comprobamos
+ * que el valor empiece por "https://", evitando que el replace toque el check.
  */
 const FUNCTION_URL = "__FUNCTION_URL__";
 
@@ -31,7 +36,7 @@ async function runMode(mode, prompt, outEl, statusEl) {
   statusEl.textContent = "Pensando…";
   statusEl.classList.add("active");
 
-  if (!FUNCTION_URL || FUNCTION_URL.includes("__FUNCTION_URL__")) {
+  if (!FUNCTION_URL || !FUNCTION_URL.startsWith("https://")) {
     statusEl.textContent = "Error: FUNCTION_URL no configurada (ejecuta deploy.sh).";
     statusEl.classList.remove("active");
     return;

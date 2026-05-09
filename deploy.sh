@@ -124,9 +124,11 @@ PY
     --region "${REGION}" \
     --delete \
     --exclude "app.js" >/dev/null
+  # Sin no-cache el navegador puede seguir sirviendo app.js viejo con __FUNCTION_URL__
   aws s3 cp "${TMP_JS}" "s3://${FRONT_BUCKET}/app.js" \
     --region "${REGION}" \
-    --content-type "application/javascript; charset=utf-8" >/dev/null
+    --content-type "application/javascript; charset=utf-8" \
+    --cache-control "no-cache, must-revalidate" >/dev/null
   rm -f "${TMP_JS}"
   echo "    Sitio sincronizado."
 else
