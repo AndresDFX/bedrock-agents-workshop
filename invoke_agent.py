@@ -42,6 +42,11 @@ def _summarize_orchestration_trace(orch: Dict[str, Any]) -> None:
 
     inv_in = orch.get("invocationInput")
     if isinstance(inv_in, dict):
+        kb_in = inv_in.get("knowledgeBaseLookupInput")
+        if isinstance(kb_in, dict):
+            q = kb_in.get("text", "")
+            kb_id = kb_in.get("knowledgeBaseId", "?")
+            print(f"  · [KB consulta] id={kb_id} → \"{q}\"")
         agi = (
             inv_in.get("actionGroupInvocationInput")
             or inv_in.get("functionInvocationInput")
@@ -71,8 +76,26 @@ def _summarize_orchestration_trace(orch: Dict[str, Any]) -> None:
     obs = orch.get("observation")
     if isinstance(obs, dict):
         ago = obs.get("actionGroupInvocationOutput")
+        kbo = obs.get("knowledgeBaseLookupOutput")
         if isinstance(ago, dict) and ago.get("text"):
             print(f"  · [observación] {ago['text']}")
+        elif isinstance(kbo, dict):
+            refs = kbo.get("retrievedReferences") or []
+            print(f"  · [KB resultados] {len(refs)} fragmento(s) recuperado(s)")
+            for i, ref in enumerate(refs[:3], start=1):
+                if not isinstance(ref, dict):
+                    continue
+                content = ref.get("content") or {}
+                text = content.get("text", "") if isinstance(content, dict) else ""
+                location = ref.get("location") or {}
+                src = ""
+                if isinstance(location, dict):
+                    s3 = location.get("s3Location")
+                    if isinstance(s3, dict):
+                        src = s3.get("uri", "")
+                snippet = (text[:160] + "…") if len(text) > 160 else text
+                tag = f" ({src})" if src else ""
+                print(f"      {i}. {snippet}{tag}")
         elif obs.get("finalResponse"):
             fr = obs["finalResponse"]
             if isinstance(fr, dict) and fr.get("text"):

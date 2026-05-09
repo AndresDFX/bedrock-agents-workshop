@@ -1,5 +1,5 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: Agente Autónomo de Soporte al Cliente - TechStore (Amazon Bedrock + CloudFormation)
+Description: Agente Autónomo de Soporte al Cliente - TechStore (Amazon Bedrock + CloudFormation, con RAG vía S3 Vectors)
 
 Parameters:
   ProjectName:
@@ -8,7 +8,18 @@ Parameters:
     Description: Nombre base para todos los recursos del taller
   BucketName:
     Type: String
-    Description: Nombre del bucket S3 donde se subió el código Lambda
+    Description: Nombre del bucket S3 donde se subió el código Lambda y los documentos seed (kb-data/)
+  KnowledgeBaseDataPrefix:
+    Type: String
+    Default: "kb-data/"
+    Description: Prefijo dentro del bucket S3 donde están los documentos a indexar
+  EmbeddingModelId:
+    Type: String
+    Default: "amazon.titan-embed-text-v2:0"
+    Description: >
+      Modelo de embeddings de Bedrock. Titan v2 entrega 1024 dimensiones y
+      soporta español. Si lo cambias por otro, ajusta también la propiedad
+      Dimension del recurso VectorIndex.
   AliasUpdateToken:
     Type: String
     Default: "1"
@@ -16,8 +27,8 @@ Parameters:
       Cambiar este valor en cada despliegue (deploy.sh usa $(date +%s)) fuerza
       una actualización del Alias del agente. Como el Alias no tiene
       RoutingConfiguration, AWS crea una versión nueva del agente y apunta el
-      Alias a ella, propagando los cambios en ActionGroups, instrucciones y
-      RequireConfirmation.
+      Alias a ella, propagando los cambios en ActionGroups, instrucciones,
+      RequireConfirmation y la asociación con la Knowledge Base.
 
 Resources:
 
@@ -64,6 +75,7 @@ Resources:
   # ─────────────────────────────────────────────────────────────
   # 3. ROL IAM PARA EL AGENTE DE BEDROCK
   #    IMPORTANTE: el nombre DEBE empezar con este prefijo exacto
+  #    Incluye permisos para invocar modelos Y consultar la Knowledge Base
   # ─────────────────────────────────────────────────────────────
   BedrockAgentRole:
     Type: AWS::IAM::Role
@@ -86,13 +98,136 @@ Resources:
                   - bedrock:InvokeModel
                   - bedrock:InvokeModelWithResponseStream
                 Resource: "*"  # Restringir al modelo específico en producción
+        - PolicyName: BedrockKnowledgeBaseRetrieve
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:Retrieve
+                  - bedrock:RetrieveAndGenerate
+                Resource: "*"
 
   # ─────────────────────────────────────────────────────────────
-  # 4. EL AGENTE DE BEDROCK
+  # 4. KNOWLEDGE BASE (RAG con S3 Vectors)
+  #    Sub-recursos:
+  #      - VectorBucket   (bucket nativo de S3 Vectors)
+  #      - VectorIndex    (índice 1024 dim, distancia coseno, float32)
+  #      - KnowledgeBaseRole   (permisos S3 + s3vectors + InvokeModel embeddings)
+  #      - KnowledgeBase  (tipo VECTOR con S3_VECTORS storage)
+  #      - DataSource     (apunta al prefijo kb-data/ del bucket S3)
+  # ─────────────────────────────────────────────────────────────
+  VectorBucket:
+    Type: AWS::S3Vectors::VectorBucket
+
+  VectorIndex:
+    Type: AWS::S3Vectors::Index
+    Properties:
+      VectorBucketArn: !GetAtt VectorBucket.VectorBucketArn
+      DataType: float32
+      Dimension: 1024  # Coincide con amazon.titan-embed-text-v2:0
+      DistanceMetric: cosine
+
+  KnowledgeBaseRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "AmazonBedrockExecutionRoleForKnowledgeBase_${ProjectName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                aws:SourceArn: !Sub "arn:aws:bedrock:${AWS::Region}:${AWS::AccountId}:knowledge-base/*"
+      Policies:
+        - PolicyName: S3DataSourceRead
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !Sub "arn:aws:s3:::${BucketName}"
+                  - !Sub "arn:aws:s3:::${BucketName}/*"
+                Condition:
+                  StringEquals:
+                    aws:PrincipalAccount: !Ref AWS::AccountId
+        - PolicyName: S3VectorsAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3vectors:PutVectors
+                  - s3vectors:GetVectors
+                  - s3vectors:DeleteVectors
+                  - s3vectors:QueryVectors
+                  - s3vectors:GetIndex
+                  - s3vectors:ListIndexes
+                Resource: !Ref VectorIndex
+        - PolicyName: BedrockEmbeddingsInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${EmbeddingModelId}"
+
+  TechstoreKnowledgeBase:
+    Type: AWS::Bedrock::KnowledgeBase
+    DependsOn: VectorIndex
+    Properties:
+      Name: !Sub "${ProjectName}-kb"
+      Description: >
+        Base de conocimiento de TechStore. Contiene políticas de devoluciones,
+        garantía y envíos, métodos de pago, FAQ de soporte, catálogo extendido
+        de productos, información corporativa, programa TechCoins y sucursales
+        físicas. Indexada con embeddings Titan v2 sobre S3 Vectors.
+      RoleArn: !GetAtt KnowledgeBaseRole.Arn
+      KnowledgeBaseConfiguration:
+        Type: VECTOR
+        VectorKnowledgeBaseConfiguration:
+          EmbeddingModelArn: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${EmbeddingModelId}"
+      StorageConfiguration:
+        Type: S3_VECTORS
+        S3VectorsConfiguration:
+          VectorBucketArn: !GetAtt VectorBucket.VectorBucketArn
+          IndexArn: !Ref VectorIndex
+
+  TechstoreDataSource:
+    Type: AWS::Bedrock::DataSource
+    Properties:
+      Name: !Sub "${ProjectName}-ds-s3"
+      Description: Documentos seed (políticas, FAQ, catálogo) almacenados en S3.
+      KnowledgeBaseId: !Ref TechstoreKnowledgeBase
+      DataSourceConfiguration:
+        Type: S3
+        S3Configuration:
+          BucketArn: !Sub "arn:aws:s3:::${BucketName}"
+          InclusionPrefixes:
+            - !Ref KnowledgeBaseDataPrefix
+      VectorIngestionConfiguration:
+        ChunkingConfiguration:
+          ChunkingStrategy: FIXED_SIZE
+          FixedSizeChunkingConfiguration:
+            MaxTokens: 300
+            OverlapPercentage: 20
+
+  # ─────────────────────────────────────────────────────────────
+  # 5. EL AGENTE DE BEDROCK (asociado a la Knowledge Base)
   # ─────────────────────────────────────────────────────────────
   SupportAgent:
     Type: AWS::Bedrock::Agent
-    DependsOn: LambdaBedrockPermission
+    DependsOn:
+      - LambdaBedrockPermission
+      - TechstoreKnowledgeBase
     Properties:
       AgentName: !Sub "${ProjectName}-agent"
       AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
@@ -102,10 +237,22 @@ Resources:
       Instruction: |
         Eres un agente de soporte al cliente para TechStore, una tienda de electrónica en línea.
         Tu misión es ayudar a los clientes con sus pedidos, procesar reembolsos cuando aplique,
-        y brindar información sobre productos de nuestro catálogo.
+        brindar información sobre productos de nuestro catálogo y responder preguntas sobre
+        políticas de la tienda usando la base de conocimiento.
+
+        FUENTES DE INFORMACIÓN QUE TIENES:
+        1. Action Group "SoporteAcciones" (datos en tiempo real de pedidos y catálogo).
+        2. Knowledge Base de TechStore (políticas de devolución/garantía/envío, métodos de pago,
+           FAQ, catálogo extendido, información corporativa, programa de fidelidad TechCoins
+           y sucursales físicas).
 
         REGLAS IMPORTANTES:
         - Saluda cordialmente en cada conversación.
+        - Para preguntas sobre POLÍTICAS, GARANTÍAS, MÉTODOS DE PAGO, PROGRAMA TECHCOINS,
+          SUCURSALES o INFORMACIÓN GENERAL DE LA EMPRESA, consulta primero la base de
+          conocimiento. Cita la información tal como aparece, sin inventar.
+        - Si la base de conocimiento no contiene la respuesta, dilo de forma explícita en
+          lugar de inventar (por ejemplo: "No tengo esa información en mi base de conocimiento").
         - Para solicitudes de reembolso, SIEMPRE llama primero a verificar_pedido para
           confirmar si el pedido es elegible antes de llamar a procesar_reembolso.
         - Si el cliente ya escribió el número de pedido (ORD-XXXX) y el motivo del reembolso
@@ -114,6 +261,15 @@ Resources:
         - Confirma con el cliente los datos relevantes antes de tomar acciones.
         - Responde SIEMPRE en español, de forma clara y amigable.
         - Si no tienes la información necesaria, pídela al cliente.
+
+      KnowledgeBases:
+        - KnowledgeBaseId: !Ref TechstoreKnowledgeBase
+          Description: >
+            Política oficial de TechStore: devoluciones, garantía, envíos, métodos de
+            pago, FAQ, catálogo extendido, programa TechCoins, sucursales y datos
+            corporativos. Consultar SIEMPRE para preguntas sobre políticas, garantías,
+            programa de fidelidad o sucursales físicas.
+          KnowledgeBaseState: ENABLED
 
       ActionGroups:
         - ActionGroupName: SoporteAcciones
@@ -158,7 +314,7 @@ Resources:
                     Required: true
 
   # ─────────────────────────────────────────────────────────────
-  # 5. ALIAS DEL AGENTE (requerido para invocarlo desde la CLI)
+  # 6. ALIAS DEL AGENTE (requerido para invocarlo desde la CLI)
   # ─────────────────────────────────────────────────────────────
   SupportAgentAlias:
     Type: AWS::Bedrock::AgentAlias
@@ -182,3 +338,15 @@ Outputs:
   LambdaFunctionName:
     Value: !Ref AgentActionHandler
     Description: Nombre de la función Lambda (action handler)
+
+  KnowledgeBaseId:
+    Value: !Ref TechstoreKnowledgeBase
+    Description: ID de la Knowledge Base (RAG)
+
+  DataSourceId:
+    Value: !GetAtt TechstoreDataSource.DataSourceId
+    Description: ID del Data Source asociado al bucket S3 (kb-data/)
+
+  VectorBucketArn:
+    Value: !GetAtt VectorBucket.VectorBucketArn
+    Description: ARN del bucket nativo de S3 Vectors usado por la KB

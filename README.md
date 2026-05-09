@@ -1,15 +1,18 @@
 # Más allá del Chatbot: Agente Autónomo de Soporte con Amazon Bedrock
 
 ¡Bienvenido al taller práctico! Construirás un **Agente de IA Autónomo** para
-soporte al cliente que verifica pedidos, procesa reembolsos y consulta un
-catálogo de productos — todo sin que le digas explícitamente qué pasos seguir.
+soporte al cliente que verifica pedidos, procesa reembolsos, consulta un
+catálogo de productos **y responde sobre las políticas de la empresa con RAG**
+— todo sin que le digas explícitamente qué pasos seguir.
 
 La gran diferencia con un chatbot normal: el agente **decide por sí solo** qué
-herramientas usar y en qué orden, encadenando múltiples acciones para resolver
-tu solicitud de principio a fin.
+herramientas o fuentes consultar y en qué orden, encadenando múltiples
+acciones (`Lambda` + `Knowledge Base`) para resolver la solicitud de principio
+a fin.
 
-Usaremos **Amazon Bedrock Agents** con **Claude Haiku 4.5** y desplegaremos toda
-la infraestructura con **AWS CloudFormation**.
+Usaremos **Amazon Bedrock Agents** con **Claude Haiku 4.5**, embeddings
+**Titan v2** sobre **Amazon S3 Vectors**, y desplegaremos toda la
+infraestructura con **AWS CloudFormation**.
 
 ---
 
@@ -20,7 +23,8 @@ la infraestructura con **AWS CloudFormation**.
 | Responde con texto generado | Ejecuta acciones reales |
 | Tú defines el flujo | El modelo decide el flujo |
 | Una llamada al modelo por turno | Puede hacer múltiples llamadas a herramientas |
-| Conocimiento estático | Consulta datos en tiempo real |
+| Conocimiento estático en el modelo | Consulta datos en tiempo real (`Lambda`) **y** documentos vectorizados (`Knowledge Base`) |
+| Inventa cuando no sabe | Cita fuentes y reconoce sus límites |
 
 ---
 
@@ -75,14 +79,24 @@ cd bedrock-agents-workshop
 
 ```
 .
-├── template.yaml          → Infraestructura CloudFormation (roles, Lambda, Agente)
-├── deploy.sh              → Script único: empaqueta y despliega todo
-├── destroy.sh             → Script único: elimina todos los recursos
-├── test.sh                → Script de pruebas (escenarios, trace, chat, compare…)
-├── invoke_agent.py        → Cliente boto3 que invoca al agente (streaming + trace + confirmación)
-├── invoke_chatbot.py      → Haiku directo sin herramientas (contraste «chatbot»)
-└── src/
-    └── lambda_function.py → Herramientas del agente (lógica Python)
+├── template.yaml           → Infraestructura CloudFormation (roles, Lambda, Agente, KB, S3 Vectors)
+├── deploy.sh               → Script único: empaqueta, sube docs, despliega y dispara la ingesta
+├── destroy.sh              → Script único: elimina todos los recursos
+├── test.sh                 → Script de pruebas (escenarios, trace, chat, compare, rag…)
+├── invoke_agent.py         → Cliente boto3 que invoca al agente (streaming + trace + confirmación + KB)
+├── invoke_chatbot.py       → Haiku directo sin herramientas ni RAG (contraste «chatbot»)
+├── src/
+│   └── lambda_function.py  → Herramientas del agente (lógica Python para pedidos y catálogo)
+└── kb-data/                → Documentos seed que se indexan en la Knowledge Base
+    ├── politicas-devoluciones.md
+    ├── politicas-garantia.md
+    ├── politicas-envio.md
+    ├── metodos-pago.md
+    ├── faq-soporte.md
+    ├── catalogo-detallado.md
+    ├── info-empresa.md       (datos demo / ficticios)
+    ├── programa-fidelidad.md (datos demo / ficticios — TechCoins)
+    └── sucursales.md         (datos demo / ficticios)
 ```
 
 ---
@@ -103,15 +117,41 @@ La Lambda actúa como el **ejecutor de herramientas** del agente. Implementa tre
 
 El template CloudFormation crea los recursos necesarios:
 
-1. **IAM Role (Lambda)** — permisos para ejecutar la función y escribir logs
-2. **Lambda Function** — las herramientas que ejecuta el agente
-3. **Lambda Permission** — autoriza a Bedrock a invocar la Lambda
-4. **IAM Role (Bedrock Agent)** — permite al agente invocar el modelo de IA
-5. **Bedrock Agent** — el orquestador que razona y decide qué herramientas usar
-6. **Bedrock Agent Alias** — endpoint estable para invocar el agente
+1. **IAM Role (Lambda)** — permisos para ejecutar la función y escribir logs.
+2. **Lambda Function** — las herramientas que ejecuta el agente.
+3. **Lambda Permission** — autoriza a Bedrock a invocar la Lambda.
+4. **IAM Role (Bedrock Agent)** — permite al agente invocar el modelo y
+   consultar la Knowledge Base (`bedrock:Retrieve`).
+5. **S3 Vectors VectorBucket + VectorIndex** — almacenamiento serverless de
+   embeddings (1024 dim, distancia coseno).
+6. **IAM Role (Knowledge Base)** — lee S3 (data source), escribe en S3 Vectors,
+   invoca el modelo de embeddings.
+7. **Bedrock Knowledge Base** — orquesta los embeddings y el storage vectorial.
+8. **Bedrock Data Source** — apunta al prefijo `kb-data/` del bucket S3.
+9. **Bedrock Agent** — orquestador que razona y decide qué fuente consultar
+   (`Lambda` o `KnowledgeBase`).
+10. **Bedrock Agent Alias** — endpoint estable para invocar el agente.
 
 💡 **Nota arquitectónica:** El rol del agente DEBE llamarse
-`AmazonBedrockExecutionRoleForAgents_*` — es un requisito de AWS Bedrock.
+`AmazonBedrockExecutionRoleForAgents_*` — es un requisito de AWS Bedrock. Lo
+mismo aplica para el rol de la KB con prefijo
+`AmazonBedrockExecutionRoleForKnowledgeBase_*`.
+
+## 1.3 ¿Por qué S3 Vectors y no OpenSearch Serverless?
+
+Bedrock Knowledge Bases admite varios *vector stores*: OpenSearch Serverless
+(OSS), Aurora con `pgvector`, Pinecone, MongoDB Atlas, Neptune Analytics y —
+desde diciembre 2025 — **Amazon S3 Vectors**.
+
+| | OpenSearch Serverless | **S3 Vectors (este taller)** |
+|---|---|---|
+| Cuesta solo cuando se usa | ❌ paga por *OCU/hora* (≈$170/mes mínimo) | ✅ paga por GB y por consulta |
+| Setup en CloudFormation | Collection + 3 políticas + Lambda custom para crear el índice | 2 recursos (`VectorBucket` + `Index`) |
+| Latencia p99 | <50 ms | <100 ms |
+| Bueno para | Búsqueda compleja con filtros, ANN ajustado | Talleres, prototipos, RAG con bajo tráfico |
+
+Como este taller debe poder borrarse al final sin generar costos, S3 Vectors
+es la opción ganadora.
 
 ---
 
@@ -128,10 +168,15 @@ El script:
 1. Crea (si no existe) el bucket `workshop-agentes-<ACCOUNT_ID>`.
 2. Empaqueta `src/lambda_function.py` en `lambda.zip`.
 3. Sube el ZIP a S3.
-4. Ejecuta `aws cloudformation deploy` con el stack `agente-soporte`.
-5. Genera `agent.env` con `AGENT_ID` y `ALIAS_ID` listos para usar.
+4. **Sincroniza** los documentos `kb-data/*.md` a `s3://.../kb-data/`.
+5. Ejecuta `aws cloudformation deploy` con el stack `agente-soporte`
+   (incluye S3 Vectors, KB y DataSource).
+6. **Dispara la ingesta** (`StartIngestionJob`) y espera a que termine.
+7. Genera `agent.env` con `AGENT_ID`, `ALIAS_ID`, `KNOWLEDGE_BASE_ID` y
+   `DATA_SOURCE_ID` listos para usar.
 
-El despliegue tarda ~2-3 minutos. Al terminar, carga las variables en tu shell:
+El despliegue tarda ~3-5 minutos (la primera vez la ingesta puede tomar 60-90
+segundos extra). Al terminar, carga las variables en tu shell:
 
 ```bash
 source agent.env
@@ -281,6 +326,86 @@ reembolso sin interrupciones en pantalla.
 
 1. Ve a **Amazon Bedrock → Agents** y abre tu agente.
 2. Pulsa **Test** y escribe los mismos prompts en la ventana de prueba.
+3. En el panel "Trace" verás los `knowledgeBaseLookupInput` y los chunks
+   recuperados con su URI `s3://...`.
+
+## 3.9 RAG: el agente consulta la Knowledge Base
+
+La carpeta `kb-data/` contiene 9 documentos en español (políticas reales,
+catálogo extendido, datos demo de la empresa y del programa **TechCoins**, y
+sucursales). Con `bash deploy.sh` se sincronizan a S3, se vectorizan con
+`amazon.titan-embed-text-v2:0` (1024 dim) y se guardan en S3 Vectors.
+
+### 4 escenarios RAG de un solo golpe
+
+```bash
+bash test.sh rag
+```
+
+| # | Pregunta | Esperado |
+|---|---|---|
+| 1 | Política de devoluciones (con producto abierto) | Cita el 90% de reembolso del documento |
+| 2 | ¿Cómo funciona el programa TechCoins? | Responde con la equivalencia 1 TechCoin = $50 COP |
+| 3 | Garantía de monitores | 36 meses, política 0 píxeles muertos en 14 días |
+| 4 | Sucursal en Lima | El agente debe **reconocer que NO existe** y no inventar |
+
+Para uno solo: `bash test.sh rag 1` … `bash test.sh rag 4`.
+
+### Ver el RAG en acción (trace en vivo)
+
+```bash
+bash test.sh rag trace 2
+```
+
+Verás líneas como:
+
+```
+· [KB consulta] id=ABCD1234 → "programa TechCoins puntos por compra"
+· [KB resultados] 3 fragmento(s) recuperado(s)
+    1. Por cada $10.000 COP gastados (sin contar IVA y envío) ganas 20 TechCoins…
+       (s3://workshop-agentes-XXX/kb-data/programa-fidelidad.md)
+    2. …
+```
+
+### Chatbot vs agente con RAG
+
+```bash
+bash test.sh rag-vs-chatbot
+```
+
+- **A)** El chatbot Haiku sin RAG inventa o se rinde.
+- **B)** El agente recupera de la KB y responde citando los datos del
+  documento `programa-fidelidad.md`.
+
+### Combinación tools + RAG
+
+Pregúntale al agente cosas que mezclen la Lambda y la KB:
+
+```bash
+python invoke_agent.py --trace "Mi pedido ORD-1001 tiene 5 días, ¿es elegible para reembolso según la política?"
+```
+
+Verás cómo encadena `verificar_pedido` (Lambda) y la consulta a la KB
+(política de 30 días) antes de responder.
+
+### Re-ingestar después de editar `kb-data/`
+
+Si modificas algún documento, vuelve a correr:
+
+```bash
+bash deploy.sh
+```
+
+`deploy.sh` re-sincroniza el bucket y dispara una nueva ingesta. Si solo
+quieres re-ingestar (sin tocar el stack):
+
+```bash
+source agent.env
+aws s3 sync kb-data/ "s3://workshop-agentes-$(aws sts get-caller-identity --query Account --output text)/kb-data/" --delete --exclude README.md
+aws bedrock-agent start-ingestion-job \
+  --knowledge-base-id "${KNOWLEDGE_BASE_ID}" \
+  --data-source-id "${DATA_SOURCE_ID}"
+```
 
 ---
 
@@ -337,15 +462,19 @@ los archivos locales (`lambda.zip`, `agent.env`).
 
 Has construido un **Agente Autónomo de IA** capaz de:
 
-- Razonar sobre qué herramientas usar en cada situación
-- Encadenar múltiples llamadas sin instrucciones explícitas
-- Aplicar reglas de negocio de forma inteligente
-- Responder en lenguaje natural a solicitudes complejas
+- Razonar sobre qué fuente consultar en cada situación (`Lambda` o `KB`).
+- Encadenar múltiples llamadas sin instrucciones explícitas.
+- Aplicar reglas de negocio de forma inteligente.
+- **Recuperar información citando documentos** y reconocer cuando no sabe algo.
+- Responder en lenguaje natural a solicitudes complejas.
 
 Tecnologías utilizadas:
 
-- Amazon Bedrock Agents
+- Amazon Bedrock Agents (orquestación + tool use)
 - Claude Haiku 4.5 (Cross-Region Inference Profile)
+- Amazon Bedrock Knowledge Bases (RAG)
+- Amazon Titan Embeddings v2 (1024 dim, multilingüe)
+- Amazon S3 Vectors (vector store serverless)
 - AWS Lambda (Action Group Handler)
 - AWS CloudFormation (IaC)
 - AWS IAM
