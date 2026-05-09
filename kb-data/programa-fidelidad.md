@@ -1,5 +1,11 @@
 # Programa TechCoins — Fidelidad TechStore (datos demo)
 
+**TL;DR para soporte:** TechCoins = programa de fidelidad. **20 TechCoins por
+cada $10.000 COP** gastados sin IVA (Bronce). **1 TechCoin = $50 COP.** Plata 30,
+Oro 50, Platino 80 por cada $10.000. **Canje en el carrito** antes de pagar.
+**Vencen a los 18 meses.** Palabras clave: puntos, recompensas, monedero,
+acumulación, redimir, programa TechCoins.
+
 > ⚠️ **Datos ficticios** creados para el taller. Las equivalencias y reglas
 > que aparecen aquí solo existen en este conjunto de documentos. El agente
 > debe responder citando estas reglas; si el cliente pregunta algo que no

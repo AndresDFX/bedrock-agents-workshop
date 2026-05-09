@@ -1,5 +1,21 @@
 # TechStore — Preguntas frecuentes (FAQ) de soporte 2026
 
+## Programa TechCoins (lo más consultado)
+
+Preguntas frecuentes sobre **puntos**, **fidelidad** y **recompensas**:
+
+- **¿Cómo funciona el programa TechCoins?** Es el programa de fidelidad de TechStore:
+  acumulas **TechCoins** en cada compra y los **canjeas como descuento** en el carrito
+  antes de pagar.
+- **¿Cuántos TechCoins gano por cada $10.000 COP?** En nivel **Bronce:**
+  **20 TechCoins por cada $10.000 COP** gastados (sin contar IVA ni envío).
+  En **Plata:** 30; **Oro:** 50; **Platino:** 80 por cada $10.000 COP.
+- **¿Cuánto vale 1 TechCoin en pesos?** **1 TechCoin = $50 COP** (cien TechCoins =
+  $5.000 COP de descuento).
+- **¿Cuándo vencen?** **18 meses** desde que se acreditaron.
+- **¿Dónde veo el detalle completo?** En el documento `programa-fidelidad.md` de
+  la misma base de conocimiento (tabla de niveles, bonos de cumpleaños, etc.).
+
 ## Pedidos
 
 **¿Dónde encuentro mi número de pedido?**

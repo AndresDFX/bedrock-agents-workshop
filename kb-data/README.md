@@ -17,10 +17,11 @@ distancia coseno).
 | `politicas-garantia.md` | "Real-ish" | Cobertura de garantía por categoría |
 | `politicas-envio.md` | "Real-ish" | Tiempos de envío y costos |
 | `metodos-pago.md` | "Real-ish" | Tarjetas, PSE, Mercado Pago, etc. |
-| `faq-soporte.md` | "Real-ish" | Preguntas frecuentes |
+| `faq-soporte.md` | "Real-ish" | Preguntas frecuentes; incluye **resumen TechCoins al inicio** para mejorar la recuperación vectorial |
+| `techcoins-resumen.md` | **Inventado** (compacto) | Tabla Q/A densa + keywords; apunta a `programa-fidelidad.md` para detalle |
 | `catalogo-detallado.md` | Mezcla — extiende los productos que la Lambda ya conoce | El agente combina **tools (Lambda)** + **RAG** |
 | `info-empresa.md` | **Inventado** | Demuestra que el RAG **respeta** el contenido del KB aunque sea inventado |
-| `programa-fidelidad.md` | **Inventado** ("TechCoins") | Lo mismo, con un dominio fácil de explicar |
+| `programa-fidelidad.md` | **Inventado** ("TechCoins") | Reglas completas + TL;DR al inicio del archivo |
 | `sucursales.md` | **Inventado** | Direcciones físicas — útil para preguntar por algo que **no** está |
 
 ## Cómo distinguir los dos modos en la charla

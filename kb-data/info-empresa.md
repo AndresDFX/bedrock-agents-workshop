@@ -24,7 +24,7 @@ Colombia, por **Andrés D. F.** (CEO) y **María C. R.** (COO).
 profesionales creativos en Latinoamérica, con un servicio postventa que
 realmente resuelva.
 
-**Valores que repetimos en cada interacción del agente:**
+**Valores que repetimos en cada interacción con el cliente:**
 
 1. **Transparencia:** si no podemos resolver algo, lo decimos.
 2. **Velocidad:** primero respondemos, después optimizamos.
@@ -38,7 +38,7 @@ realmente resuelva.
 - **2022:** apertura del centro logístico en Funza con 3.200 m².
 - **2024:** primera operación internacional desde el e-commerce, despachos a
   CDMX y Lima.
-- **2025:** integración del agente autónomo de soporte basado en Amazon
+- **2025:** integración del asistente virtual de soporte basado en Amazon
   Bedrock (este taller demuestra la versión simplificada).
 
 ## Contacto (ficticio para el taller)
