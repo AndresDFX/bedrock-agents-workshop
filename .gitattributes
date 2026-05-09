@@ -1,2 +1,3 @@
-# Forzar LF en scripts shell para evitar errores en CloudShell/Linux
+# Forzar LF en scripts shell y Python para evitar errores en CloudShell/Linux
 *.sh text eol=lf
+*.py text eol=lf

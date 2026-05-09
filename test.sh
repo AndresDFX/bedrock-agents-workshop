@@ -3,7 +3,12 @@ set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────
 # Pruebas rápidas del Agente Autónomo.
-# Requiere haber ejecutado deploy.sh y luego: source agent.env
+#
+# Nota: la AWS CLI no expone el subcomando streaming
+# `bedrock-agent-runtime invoke-agent` (es una operación con
+# respuesta en stream). Por eso invocamos al agente con boto3
+# desde Python (script invoke_agent.py).
+#
 # Uso:
 #   ./test.sh         → corre los 3 escenarios
 #   ./test.sh 1       → solo el escenario 1
@@ -22,7 +27,19 @@ if [[ -z "${AGENT_ID:-}" || -z "${ALIAS_ID:-}" ]]; then
   fi
 fi
 
-REGION="${AWS_REGION:-us-east-1}"
+export AWS_REGION="${AWS_REGION:-us-east-1}"
+
+PYTHON_BIN="$(command -v python3 || command -v python || true)"
+if [[ -z "${PYTHON_BIN}" ]]; then
+  echo "❌ No encontré 'python3' ni 'python' en el PATH."
+  echo "   En CloudShell deberían estar disponibles por defecto."
+  exit 1
+fi
+
+if ! "${PYTHON_BIN}" -c "import boto3" 2>/dev/null; then
+  echo "ℹ️  Instalando boto3 para el usuario actual..."
+  "${PYTHON_BIN}" -m pip install --quiet --user boto3
+fi
 
 invoke() {
   local titulo="$1"
@@ -32,14 +49,7 @@ invoke() {
   echo "▶ ${titulo}"
   echo "  Prompt: ${prompt}"
   echo "────────────────────────────────────────────────────────"
-  aws bedrock-agent-runtime invoke-agent \
-    --agent-id "${AGENT_ID}" \
-    --agent-alias-id "${ALIAS_ID}" \
-    --session-id "sesion-$(date +%s)-$$" \
-    --input-text "${prompt}" \
-    --region "${REGION}" \
-    respuesta.json >/dev/null
-  cat respuesta.json
+  "${PYTHON_BIN}" invoke_agent.py "${prompt}"
   echo ""
 }
 

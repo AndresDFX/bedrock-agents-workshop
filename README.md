@@ -79,6 +79,7 @@ cd bedrock-agents-workshop
 ├── deploy.sh              → Script único: empaqueta y despliega todo
 ├── destroy.sh             → Script único: elimina todos los recursos
 ├── test.sh                → Script de pruebas (3 escenarios)
+├── invoke_agent.py        → Cliente boto3 que invoca al agente (usado por test.sh)
 └── src/
     └── lambda_function.py → Herramientas del agente (lógica Python)
 ```
@@ -142,6 +143,11 @@ source agent.env
 El agente se invoca con lenguaje natural. Observa cómo encadena herramientas
 automáticamente sin que tú se las indiques.
 
+> 💡 **Nota técnica:** `InvokeAgent` es una operación con respuesta en
+> *streaming*. La AWS CLI **no expone** ese subcomando, así que invocamos al
+> agente desde Python con `boto3` (el mismo SDK que usa la consola de
+> Bedrock). El script `test.sh` se encarga de todo automáticamente.
+
 ## Atajo: ejecutar los 3 escenarios de un solo golpe
 
 ```bash
@@ -155,13 +161,7 @@ secciones 3.1 a 3.3.
 ## 3.1 Consulta simple (1 herramienta)
 
 ```bash
-aws bedrock-agent-runtime invoke-agent \
-  --agent-id ${AGENT_ID} \
-  --agent-alias-id ${ALIAS_ID} \
-  --session-id "sesion-$(date +%s)" \
-  --input-text "¿Cuánto cuesta el monitor y cuántos hay en stock?" \
-  --region ${AWS_REGION} \
-  respuesta.json && cat respuesta.json
+python invoke_agent.py "¿Cuánto cuesta el monitor y cuántos hay en stock?"
 ```
 
 ## 3.2 Flujo multi-paso autónomo (2 herramientas encadenadas)
@@ -170,13 +170,7 @@ Aquí el agente verificará el pedido ANTES de procesar el reembolso — sin que
 se lo pidas explícitamente:
 
 ```bash
-aws bedrock-agent-runtime invoke-agent \
-  --agent-id ${AGENT_ID} \
-  --agent-alias-id ${ALIAS_ID} \
-  --session-id "sesion-$(date +%s)" \
-  --input-text "Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado" \
-  --region ${AWS_REGION} \
-  respuesta.json && cat respuesta.json
+python invoke_agent.py "Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado"
 ```
 
 **¿Qué hace el agente internamente?**
@@ -193,17 +187,54 @@ aws bedrock-agent-runtime invoke-agent \
 ## 3.3 Pedido no elegible (lógica de negocio autónoma)
 
 ```bash
-aws bedrock-agent-runtime invoke-agent \
-  --agent-id ${AGENT_ID} \
-  --agent-alias-id ${ALIAS_ID} \
-  --session-id "sesion-$(date +%s)" \
-  --input-text "Necesito reembolso del pedido ORD-1004" \
-  --region ${AWS_REGION} \
-  respuesta.json && cat respuesta.json
+python invoke_agent.py "Necesito reembolso del pedido ORD-1004"
 ```
 
 El agente detectará que han pasado 45 días y rechazará el reembolso con una
 explicación clara — todo de forma autónoma.
+
+## 3.4 (Alternativa) Probar desde la consola de AWS
+
+1. Ve a **Amazon Bedrock → Agents** y abre tu agente.
+2. Pulsa **Test** y escribe los mismos prompts en la ventana de prueba.
+
+---
+
+# Paso 3.5: Actualizar un stack ya desplegado
+
+Si modificaste algo (template, código de la Lambda, instrucción del agente) y
+quieres aplicar los cambios sin destruir todo, basta con volver a correr:
+
+```bash
+bash deploy.sh
+```
+
+`deploy.sh` es **idempotente**: reutiliza el bucket si ya existe, vuelve a
+empaquetar `lambda.zip`, lo sube a S3 y ejecuta `aws cloudformation deploy`
+(que internamente hace `create-or-update`). Si CloudFormation detecta cambios,
+los aplica; si no, te dice "No changes to deploy".
+
+> ⚠️ **Truco importante con la Lambda.** El `S3Key` del template es siempre
+> `lambda.zip`. Si solo cambiaste `src/lambda_function.py` pero no
+> `template.yaml`, CloudFormation puede no detectar el cambio en la Lambda
+> (mismo bucket + misma key). Para forzar la actualización tras editar la
+> Lambda, ejecuta:
+>
+> ```bash
+> aws lambda update-function-code \
+>   --function-name techstore-agente-action-handler \
+>   --zip-file fileb://lambda.zip \
+>   --region ${AWS_REGION}
+> ```
+>
+> O simplemente corre `bash destroy.sh && bash deploy.sh` para empezar limpio.
+
+Después, vuelve a cargar las variables y re-prueba:
+
+```bash
+source agent.env
+bash test.sh
+```
 
 ---
 
