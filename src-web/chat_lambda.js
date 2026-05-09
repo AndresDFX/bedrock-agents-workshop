@@ -35,18 +35,6 @@ function region() {
 function plainHeaders() {
   return {
     "content-type": "text/plain; charset=utf-8",
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type, accept, authorization",
-  };
-}
-
-function optionsHeaders() {
-  return {
-    "access-control-allow-origin": "*",
-    "access-control-allow-methods": "GET,POST,OPTIONS",
-    "access-control-allow-headers": "content-type, accept, authorization",
-    "access-control-max-age": "86400",
   };
 }
 
@@ -146,17 +134,6 @@ async function collectAgentText(prompt) {
 }
 
 exports.handler = async (event) => {
-  const method = event.requestContext?.http?.method || "POST";
-
-  if (method === "OPTIONS") {
-    // 200 vacío: algunos clientes/proxies manejan mejor el preflight que 204.
-    return {
-      statusCode: 200,
-      headers: optionsHeaders(),
-      body: "",
-    };
-  }
-
   let bodyRaw = event.body;
   if (event.isBase64Encoded && bodyRaw) {
     bodyRaw = Buffer.from(bodyRaw, "base64").toString("utf8");

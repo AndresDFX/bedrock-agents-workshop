@@ -417,13 +417,21 @@ Resources:
         S3Key: !Ref WebLambdaS3Key
 
   # Demo web vía HTTP API (API Gateway): evita Function URL pública y 403 en algunas cuentas.
-  # CORS solo desde Lambda (evita doble manejo API+Lambda que rompe el preflight).
+  # CORS lo gestiona el HTTP API: intercepta OPTIONS antes de Lambda y devuelve 204+headers.
   ChatHttpApi:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: !Sub "${ProjectName}-chat-http"
       Description: Demo taller — API HTTP publica hacia Lambda chat (proxy BUFFERED).
       ProtocolType: HTTP
+      CorsConfiguration:
+        AllowOrigins:
+          - '*'
+        AllowMethods:
+          - '*'
+        AllowHeaders:
+          - '*'
+        MaxAge: 86400
 
   ChatHttpApiIntegration:
     Type: AWS::ApiGatewayV2::Integration
