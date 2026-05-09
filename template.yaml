@@ -449,7 +449,7 @@ Resources:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref ChatHttpApi
-      RouteKey: $default
+      RouteKey: POST /
       AuthorizationType: NONE
       Target: !Join ['/', ['integrations', !Ref ChatHttpApiIntegration]]
 
