@@ -137,6 +137,23 @@ El despliegue tarda ~2-3 minutos. Al terminar, carga las variables en tu shell:
 source agent.env
 ```
 
+> 🔁 **¿Por qué `deploy.sh` pasa `AliasUpdateToken=$(date +%s)`?**
+> El alias `produccion` no usa `RoutingConfiguration` fija, así que Bedrock crea
+> automáticamente una nueva versión del agente cada vez que el alias se actualiza.
+> Sin ese token cambiante, CloudFormation no detectaría cambios en el alias y el
+> alias seguiría apuntando a la versión anterior — sin tus cambios en
+> `RequireConfirmation`, instrucciones, ni Action Groups. Con el token, cada
+> `bash deploy.sh` propaga los cambios a producción.
+
+## 2.1 Ver los Action Groups en la consola
+
+1. Ve a **Amazon Bedrock → Agents → `techstore-agente-agent`**.
+2. La página principal solo muestra un **resumen**. Para ver/editar funciones,
+   pulsa **"Edit in Agent Builder"** (botón superior).
+3. Dentro del builder verás la sección **"Action groups"** con `SoporteAcciones`
+   y las tres funciones; en `procesar_reembolso` aparecerá **"User confirmation"**
+   activado.
+
 ---
 
 # Paso 3: Probar el Agente Autónomo

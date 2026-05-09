@@ -39,12 +39,17 @@ rm -f lambda.zip
 echo "==> Subiendo lambda.zip a s3://${BUCKET_NAME}/..."
 aws s3 cp lambda.zip "s3://${BUCKET_NAME}/lambda.zip" --region "${REGION}" >/dev/null
 
+ALIAS_TOKEN="$(date +%s)"
 echo "==> Desplegando stack CloudFormation (${STACK_NAME})..."
+echo "    AliasUpdateToken=${ALIAS_TOKEN} (fuerza nueva versión del agente)"
 aws cloudformation deploy \
   --template-file template.yaml \
   --stack-name "${STACK_NAME}" \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides BucketName="${BUCKET_NAME}" ProjectName="${PROJECT_NAME}" \
+  --parameter-overrides \
+      BucketName="${BUCKET_NAME}" \
+      ProjectName="${PROJECT_NAME}" \
+      AliasUpdateToken="${ALIAS_TOKEN}" \
   --region "${REGION}"
 
 echo "==> Obteniendo outputs..."

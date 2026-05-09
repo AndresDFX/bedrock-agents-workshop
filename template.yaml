@@ -9,6 +9,15 @@ Parameters:
   BucketName:
     Type: String
     Description: Nombre del bucket S3 donde se subió el código Lambda
+  AliasUpdateToken:
+    Type: String
+    Default: "1"
+    Description: >
+      Cambiar este valor en cada despliegue (deploy.sh usa $(date +%s)) fuerza
+      una actualización del Alias del agente. Como el Alias no tiene
+      RoutingConfiguration, AWS crea una versión nueva del agente y apunta el
+      Alias a ella, propagando los cambios en ActionGroups, instrucciones y
+      RequireConfirmation.
 
 Resources:
 
@@ -156,6 +165,7 @@ Resources:
     Properties:
       AgentId: !Ref SupportAgent
       AgentAliasName: produccion
+      Description: !Sub "Alias produccion - actualizado token=${AliasUpdateToken}"
 
 # ─────────────────────────────────────────────────────────────
 # OUTPUTS: valores que necesitarás para probar el agente

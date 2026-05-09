@@ -43,12 +43,16 @@ def _summarize_orchestration_trace(orch: Dict[str, Any]) -> None:
     inv_in = orch.get("invocationInput")
     if isinstance(inv_in, dict):
         agi = (
-            inv_in.get("functionInvocationInput")
-            or inv_in.get("actionGroupInvocationInput")
+            inv_in.get("actionGroupInvocationInput")
+            or inv_in.get("functionInvocationInput")
             or inv_in.get("apiInvocationInput")
         )
         if isinstance(agi, dict):
-            ag = agi.get("actionGroup", "?")
+            ag = (
+                agi.get("actionGroupName")
+                or agi.get("actionGroup")
+                or "ActionGroup"
+            )
             fn = agi.get("function")
             if fn:
                 params = agi.get("parameters") or []
@@ -66,8 +70,16 @@ def _summarize_orchestration_trace(orch: Dict[str, Any]) -> None:
 
     obs = orch.get("observation")
     if isinstance(obs, dict):
-        body_preview = json.dumps(obs, ensure_ascii=False, default=str)[:400]
-        print(f"  · [observación] {body_preview}")
+        ago = obs.get("actionGroupInvocationOutput")
+        if isinstance(ago, dict) and ago.get("text"):
+            print(f"  · [observación] {ago['text']}")
+        elif obs.get("finalResponse"):
+            fr = obs["finalResponse"]
+            if isinstance(fr, dict) and fr.get("text"):
+                print(f"  · [respuesta del modelo] {fr['text'][:400]}")
+        else:
+            body_preview = json.dumps(obs, ensure_ascii=False, default=str)[:400]
+            print(f"  · [observación] {body_preview}")
 
     if "finalResponse" in orch:
         fr = orch["finalResponse"]
@@ -269,15 +281,13 @@ def run_single_turn(
         input_text=prompt,
         session_state=None,
         enable_trace=enable_trace,
-        print_chunks=not enable_trace,
+        print_chunks=False,
     )
 
-    if enable_trace and text.strip():
-        print()
-        print("── Respuesta (texto) ──")
-        print(text.strip())
-
-    if not enable_trace and text.strip():
+    if text.strip():
+        if enable_trace:
+            print()
+            print("── Respuesta ──")
         print(text.strip())
 
     iterations = 0
@@ -292,6 +302,8 @@ def run_single_turn(
 
         if enable_trace:
             print(f"\n→ Enviando confirmationState={choice} ...\n")
+        else:
+            print(f"→ confirmationState={choice}")
 
         text, rc = _invoke_agent_once(
             client,
@@ -301,14 +313,13 @@ def run_single_turn(
             input_text="",
             session_state=session_state,
             enable_trace=enable_trace,
-            print_chunks=not enable_trace,
+            print_chunks=False,
         )
 
-        if enable_trace and text.strip():
-            print()
-            print("── Respuesta tras confirmación ──")
-            print(text.strip())
-        elif text.strip():
+        if text.strip():
+            if enable_trace:
+                print()
+                print("── Respuesta tras confirmación ──")
             print(text.strip())
 
     if rc and not handle_confirmation:
@@ -350,13 +361,12 @@ def run_chat(
             input_text=line,
             session_state=None,
             enable_trace=enable_trace,
-            print_chunks=not enable_trace,
+            print_chunks=False,
         )
 
-        if enable_trace and text.strip():
-            print("\n── Respuesta ──")
-            print(text.strip())
-        elif text.strip():
+        if text.strip():
+            if enable_trace:
+                print("\n── Respuesta ──")
             print(text.strip())
 
         iterations = 0
@@ -374,7 +384,7 @@ def run_chat(
                 input_text="",
                 session_state=session_state,
                 enable_trace=enable_trace,
-                print_chunks=not enable_trace,
+                print_chunks=False,
             )
             if text.strip():
                 print()
