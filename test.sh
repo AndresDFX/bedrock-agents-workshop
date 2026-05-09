@@ -2,18 +2,15 @@
 set -euo pipefail
 
 # ─────────────────────────────────────────────────────────────
-# Pruebas rápidas del Agente Autónomo.
-#
-# Nota: la AWS CLI no expone el subcomando streaming
-# `bedrock-agent-runtime invoke-agent` (es una operación con
-# respuesta en stream). Por eso invocamos al agente con boto3
-# desde Python (script invoke_agent.py).
+# Pruebas del Agente Autónomo (boto3 → invoke_agent.py).
 #
 # Uso:
-#   ./test.sh         → corre los 3 escenarios
-#   ./test.sh 1       → solo el escenario 1
-#   ./test.sh 2       → solo el escenario 2
-#   ./test.sh 3       → solo el escenario 3
+#   bash test.sh              → los 3 escenarios básicos
+#   bash test.sh 1|2|3       → un escenario
+#   bash test.sh trace [N]   → escenario N con --trace (default N=2)
+#   bash test.sh chat        → multi-turno (--chat)
+#   bash test.sh confirm     → reembolso ORD-1001 + confirmación humana
+#   bash test.sh compare     → mismo prompt: chatbot Haiku vs agente
 # ─────────────────────────────────────────────────────────────
 
 if [[ -z "${AGENT_ID:-}" || -z "${ALIAS_ID:-}" ]]; then
@@ -32,13 +29,76 @@ export AWS_REGION="${AWS_REGION:-us-east-1}"
 PYTHON_BIN="$(command -v python3 || command -v python || true)"
 if [[ -z "${PYTHON_BIN}" ]]; then
   echo "❌ No encontré 'python3' ni 'python' en el PATH."
-  echo "   En CloudShell deberían estar disponibles por defecto."
   exit 1
 fi
 
 if ! "${PYTHON_BIN}" -c "import boto3" 2>/dev/null; then
   echo "ℹ️  Instalando boto3 para el usuario actual..."
   "${PYTHON_BIN}" -m pip install --quiet --user boto3
+fi
+
+prompt_for_scenario() {
+  case "${1}" in
+    1) echo "¿Cuánto cuesta el monitor y cuántos hay en stock?" ;;
+    2) echo "Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado" ;;
+    3) echo "Necesito reembolso del pedido ORD-1004" ;;
+    *) echo "¿Cuánto cuesta el monitor y cuántos hay en stock?" ;;
+  esac
+}
+
+SUBCMD="${1:-all}"
+
+if [[ "${SUBCMD}" == "trace" ]]; then
+  N="${2:-2}"
+  PROMPT="$(prompt_for_scenario "${N}")"
+  echo ""
+  echo "────────────────────────────────────────────────────────"
+  echo "▶ Trace en vivo — escenario ${N}"
+  echo "  Prompt: ${PROMPT}"
+  echo "────────────────────────────────────────────────────────"
+  "${PYTHON_BIN}" invoke_agent.py --trace "${PROMPT}"
+  exit 0
+fi
+
+if [[ "${SUBCMD}" == "chat" ]]; then
+  TRACE_FLAG=()
+  if [[ "${2:-}" == "trace" ]]; then
+    TRACE_FLAG=(--trace)
+  fi
+  echo ""
+  echo "────────────────────────────────────────────────────────"
+  echo "▶ Modo chat multi-turno (Ctrl+D o 'salir' para terminar)"
+  echo "   Opcional: bash test.sh chat trace"
+  echo "────────────────────────────────────────────────────────"
+  "${PYTHON_BIN}" invoke_agent.py --chat "${TRACE_FLAG[@]}"
+  exit 0
+fi
+
+if [[ "${SUBCMD}" == "confirm" ]]; then
+  PROMPT="Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado"
+  echo ""
+  echo "────────────────────────────────────────────────────────"
+  echo "▶ Human-in-the-loop (confirmación antes de procesar_reembolso)"
+  echo "  Prompt: ${PROMPT}"
+  echo "────────────────────────────────────────────────────────"
+  "${PYTHON_BIN}" invoke_agent.py "${PROMPT}"
+  exit 0
+fi
+
+if [[ "${SUBCMD}" == "compare" ]]; then
+  PROMPT="Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado"
+  echo ""
+  echo "════════════════════════════════════════════════════════"
+  echo " A) Chatbot tradicional — solo modelo Haiku (sin herramientas)"
+  echo "════════════════════════════════════════════════════════"
+  "${PYTHON_BIN}" invoke_chatbot.py "${PROMPT}"
+  echo ""
+  echo "════════════════════════════════════════════════════════"
+  echo " B) Agente Bedrock — Action Groups + Lambda + orquestación"
+  echo "    (AUTO_CONFIRM=CONFIRM para completar la demo sin prompts)"
+  echo "════════════════════════════════════════════════════════"
+  AUTO_CONFIRM=CONFIRM "${PYTHON_BIN}" invoke_agent.py "${PROMPT}"
+  exit 0
 fi
 
 invoke() {
@@ -49,25 +109,31 @@ invoke() {
   echo "▶ ${titulo}"
   echo "  Prompt: ${prompt}"
   echo "────────────────────────────────────────────────────────"
-  "${PYTHON_BIN}" invoke_agent.py "${prompt}"
+  AUTO_CONFIRM=CONFIRM "${PYTHON_BIN}" invoke_agent.py "${prompt}"
   echo ""
 }
 
-ESCENARIO="${1:-all}"
+ESCENARIO="${SUBCMD}"
 
 if [[ "${ESCENARIO}" == "all" || "${ESCENARIO}" == "1" ]]; then
   invoke "Escenario 1 — Consulta simple (1 herramienta)" \
-    "¿Cuánto cuesta el monitor y cuántos hay en stock?"
+    "$(prompt_for_scenario 1)"
 fi
 
 if [[ "${ESCENARIO}" == "all" || "${ESCENARIO}" == "2" ]]; then
   invoke "Escenario 2 — Flujo multi-paso autónomo (verifica + reembolsa)" \
-    "Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado"
+    "$(prompt_for_scenario 2)"
 fi
 
 if [[ "${ESCENARIO}" == "all" || "${ESCENARIO}" == "3" ]]; then
   invoke "Escenario 3 — Pedido no elegible (más de 30 días)" \
-    "Necesito reembolso del pedido ORD-1004"
+    "$(prompt_for_scenario 3)"
+fi
+
+if [[ "${ESCENARIO}" != "all" && "${ESCENARIO}" != "1" && "${ESCENARIO}" != "2" && "${ESCENARIO}" != "3" ]]; then
+  echo "❌ Subcomando desconocido: ${ESCENARIO}"
+  echo "   Usa: bash test.sh | bash test.sh 1|2|3 | bash test.sh trace [N] | bash test.sh chat | bash test.sh confirm | bash test.sh compare"
+  exit 1
 fi
 
 echo ""

@@ -99,6 +99,9 @@ Resources:
         - Saluda cordialmente en cada conversación.
         - Para solicitudes de reembolso, SIEMPRE llama primero a verificar_pedido para
           confirmar si el pedido es elegible antes de llamar a procesar_reembolso.
+        - Si el cliente ya escribió el número de pedido (ORD-XXXX) y el motivo del reembolso
+          en el mismo mensaje, llama verificar_pedido y luego procesar_reembolso sin pedir
+          aclaraciones adicionales (modo demo del taller).
         - Confirma con el cliente los datos relevantes antes de tomar acciones.
         - Responde SIEMPRE en español, de forma clara y amigable.
         - Si no tienes la información necesaria, pídela al cliente.
@@ -124,6 +127,7 @@ Resources:
                 Description: >
                   Inicia el proceso de reembolso para un pedido elegible.
                   Solo funciona si el pedido fue entregado hace menos de 30 días.
+                RequireConfirmation: true
                 Parameters:
                   numero_pedido:
                     Description: "Número del pedido a reembolsar"
