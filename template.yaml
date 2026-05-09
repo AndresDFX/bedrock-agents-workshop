@@ -428,9 +428,13 @@ Resources:
         AllowOrigins:
           - '*'
         AllowMethods:
-          - '*'
+          - GET
+          - POST
+          - OPTIONS
         AllowHeaders:
-          - '*'
+          - content-type
+          - accept
+          - authorization
         MaxAge: 86400
 
   ChatHttpApiIntegration:
