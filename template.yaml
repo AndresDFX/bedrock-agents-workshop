@@ -351,22 +351,17 @@ Resources:
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        IgnorePublicAcls: true
+        BlockPublicPolicy: false
+        RestrictPublicBuckets: false
       WebsiteConfiguration:
         IndexDocument: index.html
         ErrorDocument: index.html
 
-  WebFrontendBucketPublicAccessBlock:
-    Type: AWS::S3::BucketPublicAccessBlock
-    Properties:
-      Bucket: !Ref WebFrontendBucket
-      BlockPublicAcls: true
-      IgnorePublicAcls: true
-      BlockPublicPolicy: false
-      RestrictPublicBuckets: false
-
   WebFrontendBucketPolicy:
     Type: AWS::S3::BucketPolicy
-    DependsOn: WebFrontendBucketPublicAccessBlock
     Properties:
       Bucket: !Ref WebFrontendBucket
       PolicyDocument:
