@@ -65,7 +65,7 @@ peticiones del taller.
 ## 0.3 Descargar el código del taller
 
 ```bash
-git clone https://github.com/TU_USUARIO/bedrock-agents-workshop.git
+git clone https://github.com/AndresDFX/bedrock-agents-workshop.git
 cd bedrock-agents-workshop
 ```
 
