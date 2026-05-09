@@ -185,11 +185,8 @@ Resources:
     DependsOn: VectorIndex
     Properties:
       Name: !Sub "${ProjectName}-kb"
-      Description: >
-        Base de conocimiento de TechStore. Contiene políticas de devoluciones,
-        garantía y envíos, métodos de pago, FAQ de soporte, catálogo extendido
-        de productos, información corporativa, programa TechCoins y sucursales
-        físicas. Indexada con embeddings Titan v2 sobre S3 Vectors.
+      # CloudFormation limita Description a 200 caracteres en este recurso
+      Description: "Politicas, FAQ, catalogo, TechCoins y sucursales de TechStore. Embeddings Titan v2 + S3 Vectors."
       RoleArn: !GetAtt KnowledgeBaseRole.Arn
       KnowledgeBaseConfiguration:
         Type: VECTOR
@@ -263,12 +260,9 @@ Resources:
         - Si no tienes la información necesaria, pídela al cliente.
 
       KnowledgeBases:
+        # CloudFormation limita esta Description a 200 caracteres
         - KnowledgeBaseId: !Ref TechstoreKnowledgeBase
-          Description: >
-            Política oficial de TechStore: devoluciones, garantía, envíos, métodos de
-            pago, FAQ, catálogo extendido, programa TechCoins, sucursales y datos
-            corporativos. Consultar SIEMPRE para preguntas sobre políticas, garantías,
-            programa de fidelidad o sucursales físicas.
+          Description: "Politicas oficiales de TechStore (devoluciones, garantia, envio, pago), FAQ, catalogo, programa TechCoins y sucursales. Consultar para politicas y datos corporativos."
           KnowledgeBaseState: ENABLED
 
       ActionGroups:
