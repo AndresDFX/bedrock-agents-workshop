@@ -1,0 +1,19 @@
+# Lambda deployment artifacts
+lambda.zip
+packaged.yaml
+
+# Outputs locales del despliegue
+agent.env
+respuesta.json
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# AWS SAM / local testing
+.aws-sam/
+
+# Environment files
+.env
+*.env

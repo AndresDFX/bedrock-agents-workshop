@@ -1,0 +1,2 @@
+# Forzar LF en scripts shell para evitar errores en CloudShell/Linux
+*.sh text eol=lf

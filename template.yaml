@@ -1,0 +1,170 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Agente Autónomo de Soporte al Cliente - TechStore (Amazon Bedrock + CloudFormation)
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: techstore-agente
+    Description: Nombre base para todos los recursos del taller
+  BucketName:
+    Type: String
+    Description: Nombre del bucket S3 donde se subió el código Lambda
+
+Resources:
+
+  # ─────────────────────────────────────────────────────────────
+  # 1. ROL IAM PARA LA FUNCIÓN LAMBDA (ejecuta las herramientas)
+  # ─────────────────────────────────────────────────────────────
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-lambda-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+
+  # ─────────────────────────────────────────────────────────────
+  # 2. FUNCIÓN LAMBDA (manejador de herramientas del agente)
+  # ─────────────────────────────────────────────────────────────
+  AgentActionHandler:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-action-handler"
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Handler: lambda_function.lambda_handler
+      Runtime: python3.12
+      Timeout: 30
+      Code:
+        S3Bucket: !Ref BucketName
+        S3Key: lambda.zip
+
+  # Permite que el servicio Bedrock invoque la Lambda
+  LambdaBedrockPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !GetAtt AgentActionHandler.Arn
+      Action: lambda:InvokeFunction
+      Principal: bedrock.amazonaws.com
+
+  # ─────────────────────────────────────────────────────────────
+  # 3. ROL IAM PARA EL AGENTE DE BEDROCK
+  #    IMPORTANTE: el nombre DEBE empezar con este prefijo exacto
+  # ─────────────────────────────────────────────────────────────
+  BedrockAgentRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "AmazonBedrockExecutionRoleForAgents_${ProjectName}"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: bedrock.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: BedrockModelInvoke
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                  - bedrock:InvokeModelWithResponseStream
+                Resource: "*"  # Restringir al modelo específico en producción
+
+  # ─────────────────────────────────────────────────────────────
+  # 4. EL AGENTE DE BEDROCK
+  # ─────────────────────────────────────────────────────────────
+  SupportAgent:
+    Type: AWS::Bedrock::Agent
+    DependsOn: LambdaBedrockPermission
+    Properties:
+      AgentName: !Sub "${ProjectName}-agent"
+      AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
+      FoundationModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+      IdleSessionTTLInSeconds: 1800
+      AutoPrepare: true
+      Instruction: |
+        Eres un agente de soporte al cliente para TechStore, una tienda de electrónica en línea.
+        Tu misión es ayudar a los clientes con sus pedidos, procesar reembolsos cuando aplique,
+        y brindar información sobre productos de nuestro catálogo.
+
+        REGLAS IMPORTANTES:
+        - Saluda cordialmente en cada conversación.
+        - Para solicitudes de reembolso, SIEMPRE llama primero a verificar_pedido para
+          confirmar si el pedido es elegible antes de llamar a procesar_reembolso.
+        - Confirma con el cliente los datos relevantes antes de tomar acciones.
+        - Responde SIEMPRE en español, de forma clara y amigable.
+        - Si no tienes la información necesaria, pídela al cliente.
+
+      ActionGroups:
+        - ActionGroupName: SoporteAcciones
+          Description: Herramientas para gestionar pedidos y consultar productos de TechStore
+          ActionGroupExecutor:
+            Lambda: !GetAtt AgentActionHandler.Arn
+          FunctionSchema:
+            Functions:
+              - Name: verificar_pedido
+                Description: >
+                  Verifica el estado actual de un pedido del cliente, incluyendo
+                  si es elegible para reembolso (entregado hace menos de 30 días).
+                Parameters:
+                  numero_pedido:
+                    Description: "Número único del pedido (formato ORD-XXXX, ejemplo: ORD-1001)"
+                    Type: string
+                    Required: true
+
+              - Name: procesar_reembolso
+                Description: >
+                  Inicia el proceso de reembolso para un pedido elegible.
+                  Solo funciona si el pedido fue entregado hace menos de 30 días.
+                Parameters:
+                  numero_pedido:
+                    Description: "Número del pedido a reembolsar"
+                    Type: string
+                    Required: true
+                  motivo:
+                    Description: "Motivo del reembolso proporcionado por el cliente"
+                    Type: string
+                    Required: true
+
+              - Name: consultar_producto
+                Description: >
+                  Obtiene información detallada de un producto del catálogo:
+                  precio, stock disponible, garantía y especificaciones técnicas.
+                Parameters:
+                  nombre_producto:
+                    Description: "Nombre del producto a consultar (Laptop, Mouse, Teclado o Monitor)"
+                    Type: string
+                    Required: true
+
+  # ─────────────────────────────────────────────────────────────
+  # 5. ALIAS DEL AGENTE (requerido para invocarlo desde la CLI)
+  # ─────────────────────────────────────────────────────────────
+  SupportAgentAlias:
+    Type: AWS::Bedrock::AgentAlias
+    Properties:
+      AgentId: !Ref SupportAgent
+      AgentAliasName: produccion
+
+# ─────────────────────────────────────────────────────────────
+# OUTPUTS: valores que necesitarás para probar el agente
+# ─────────────────────────────────────────────────────────────
+Outputs:
+  AgentId:
+    Value: !Ref SupportAgent
+    Description: ID del Agente de Bedrock
+
+  AgentAliasId:
+    Value: !GetAtt SupportAgentAlias.AgentAliasId
+    Description: ID del Alias del Agente (necesario para invocarlo)
+
+  LambdaFunctionName:
+    Value: !Ref AgentActionHandler
+    Description: Nombre de la función Lambda (action handler)
