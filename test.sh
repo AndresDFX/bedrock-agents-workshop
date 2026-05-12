@@ -93,7 +93,7 @@ if [[ "${SUBCMD}" == "compare" ]]; then
   PROMPT="Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado"
   echo ""
   echo "════════════════════════════════════════════════════════"
-  echo " A) Chatbot tradicional — solo modelo Haiku (sin herramientas)"
+  echo " A) Chatbot tradicional — solo modelo Sonnet 4.5 (sin herramientas)"
   echo "════════════════════════════════════════════════════════"
   "${PYTHON_BIN}" invoke_chatbot.py "${PROMPT}"
   echo ""

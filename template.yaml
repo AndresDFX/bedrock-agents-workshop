@@ -32,7 +32,7 @@ Parameters:
   WebLambdaS3Key:
     Type: String
     Default: chat_lambda.zip
-    Description: Clave S3 del ZIP de la Lambda demo web (Haiku vs agente, streaming)
+    Description: Clave S3 del ZIP de la Lambda demo web (Sonnet vs agente, streaming)
 
 Resources:
 
@@ -236,7 +236,7 @@ Resources:
     Properties:
       AgentName: !Sub "${ProjectName}-agent"
       AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
-      FoundationModel: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+      FoundationModel: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
       IdleSessionTTLInSeconds: 1800
       AutoPrepare: true
       Instruction: |
@@ -411,7 +411,7 @@ Resources:
         Variables:
           AGENT_ID: !Ref SupportAgent
           ALIAS_ID: !GetAtt SupportAgentAlias.AgentAliasId
-          BEDROCK_MODEL_ID: us.anthropic.claude-haiku-4-5-20251001-v1:0
+          BEDROCK_MODEL_ID: us.anthropic.claude-sonnet-4-5-20250929-v1:0
       Code:
         S3Bucket: !Ref BucketName
         S3Key: !Ref WebLambdaS3Key

@@ -25,7 +25,7 @@ explica amablemente esa limitación y sugiere que contacte soporte humano o use 
 Responde SIEMPRE en español, de forma clara y cordial.`;
 
 function defaultModelId() {
-  return process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-haiku-4-5-20251001-v1:0";
+  return process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
 }
 
 function region() {
@@ -38,7 +38,7 @@ function plainHeaders() {
   };
 }
 
-async function collectHaikuText(prompt) {
+async function collectSonnetText(prompt) {
   const client = new BedrockRuntimeClient({ region: region() });
   const body = JSON.stringify({
     anthropic_version: "bedrock-2023-05-31",
@@ -164,7 +164,7 @@ exports.handler = async (event) => {
   try {
     let text;
     if (mode === "chatbot") {
-      text = await collectHaikuText(prompt);
+      text = await collectSonnetText(prompt);
     } else if (mode === "agent") {
       text = await collectAgentText(prompt);
     } else {

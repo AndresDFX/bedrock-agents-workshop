@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Invoca Claude Haiku directamente por Bedrock (invoke_model), sin Action Groups.
+Invoca Claude Sonnet 4.5 directamente por Bedrock (invoke_model), sin Action Groups.
 
 Sirve para contrastar en la charla: el modelo solo genera texto y no puede ejecutar
 verificar_pedido / procesar_reembolso.
@@ -22,7 +22,7 @@ import sys
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-DEFAULT_MODEL = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
 SYSTEM_PROMPT = """Eres un asistente de soporte de TechStore, tienda de electrónica en línea.
 
@@ -60,7 +60,7 @@ def invoke_chatbot(prompt: str, *, region: str, model_id: str) -> str:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Chatbot Haiku sin herramientas (contraste).")
+    parser = argparse.ArgumentParser(description="Chatbot Sonnet 4.5 sin herramientas (contraste).")
     parser.add_argument("prompt", nargs="+", help="Mensaje del usuario")
     args = parser.parse_args()
 
