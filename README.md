@@ -10,7 +10,7 @@ herramientas o fuentes consultar y en qué orden, encadenando múltiples
 acciones (`Lambda` + `Knowledge Base`) para resolver la solicitud de principio
 a fin.
 
-Usaremos **Amazon Bedrock Agents** con **Claude Haiku 4.5**, embeddings
+Usaremos **Amazon Bedrock Agents** con **Claude Sonnet 4.5**, embeddings
 **Titan v2** sobre **Amazon S3 Vectors**, y desplegaremos toda la
 infraestructura con **AWS CloudFormation**.
 
@@ -37,11 +37,11 @@ infraestructura con **AWS CloudFormation**.
 
 # Paso 0: Preparación del Entorno
 
-## 0.1 Habilitar acceso a Claude Haiku 4.5 en Amazon Bedrock
+## 0.1 Habilitar acceso a Claude Sonnet 4.5 en Amazon Bedrock
 
 1. En la barra de búsqueda de la consola de AWS, escribe **Amazon Bedrock**.
 2. En el menú lateral, entra a **Model catalog**.
-3. Busca y selecciona **Claude Haiku 4.5**.
+3. Busca y selecciona **Claude Sonnet 4.5**.
 4. Haz clic en **Open in Playground**.
 5. Completa el formulario de uso con algo como:
 
@@ -84,9 +84,9 @@ cd bedrock-agents-workshop
 ├── destroy.sh              → Script único: elimina todos los recursos
 ├── test.sh                 → Script de pruebas (escenarios, trace, chat, compare, rag…)
 ├── invoke_agent.py         → Cliente boto3 que invoca al agente (streaming + trace + confirmación + KB)
-├── invoke_chatbot.py       → Haiku directo sin herramientas ni RAG (contraste «chatbot»)
+├── invoke_chatbot.py       → Sonnet directo sin herramientas ni RAG (contraste «chatbot»)
 ├── web/                    → Sitio estático (S3 website): UI comparativa en dos columnas
-├── src-web/                → Lambda demo web: streaming Haiku vs agente (`chat_lambda.js` + CLI Python opcional)
+├── src-web/                → Lambda demo web: streaming Sonnet vs agente (`chat_lambda.js` + CLI Python opcional)
 ├── src/
 │   └── lambda_function.py  → Herramientas del agente (lógica Python para pedidos y catálogo)
 └── kb-data/                → Documentos seed que se indexan en la Knowledge Base
@@ -211,14 +211,14 @@ source agent.env
    y las tres funciones; en `procesar_reembolso` aparecerá **"User confirmation"**
    activado.
 
-## 2.2 Probar desde el navegador (Haiku vs agente)
+## 2.2 Probar desde el navegador (Sonnet vs agente)
 
 Al finalizar `bash deploy.sh`, el script imprime una línea **Frontend URL** con el *website endpoint*
 HTTP del bucket S3 (sin CloudFront). Ábrela en el navegador:
 
 1. Escribe un prompt (por ejemplo *«¿Cómo funciona el programa TechCoins?»*).
 2. Pulsa **Comparar**. Verás dos columnas en paralelo:
-   - **Haiku (chatbot):** `invoke_model_with_response_stream` (acumulado en Lambda) con el mismo *system prompt* que `invoke_chatbot.py`.
+   - **Sonnet (chatbot):** `invoke_model_with_response_stream` (acumulado en Lambda) con el mismo *system prompt* que `invoke_chatbot.py`.
    - **Agente Bedrock:** `invoke_agent` (stream consumido en Lambda) con herramientas Lambda + Knowledge Base.
 
 ### HTTP API en lugar de Function URL
@@ -358,7 +358,7 @@ AUTO_CONFIRM=DENY python invoke_agent.py "Tu mensaje…"
 
 ## 3.7 Chatbot vs agente (mismo prompt)
 
-Compara el mismo texto con **Haiku solo** (`invoke_model`, sin herramientas) frente al **agente**
+Compara el mismo texto con **Sonnet solo** (`invoke_model`, sin herramientas) frente al **agente**
 (orquestación + Lambda):
 
 ```bash
@@ -419,7 +419,7 @@ Verás líneas como:
 bash test.sh rag-vs-chatbot
 ```
 
-- **A)** El chatbot Haiku sin RAG inventa o se rinde.
+- **A)** El chatbot Sonnet sin RAG inventa o se rinde.
 - **B)** El agente recupera de la KB y responde citando los datos del
   documento `programa-fidelidad.md`.
 
@@ -533,7 +533,7 @@ Has construido un **Agente Autónomo de IA** capaz de:
 Tecnologías utilizadas:
 
 - Amazon Bedrock Agents (orquestación + tool use)
-- Claude Haiku 4.5 (Cross-Region Inference Profile)
+- Claude Sonnet 4.5 (Cross-Region Inference Profile)
 - Amazon Bedrock Knowledge Bases (RAG)
 - Amazon Titan Embeddings v2 (1024 dim, multilingüe)
 - Amazon S3 Vectors (vector store serverless)
