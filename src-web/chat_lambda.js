@@ -25,7 +25,7 @@ explica amablemente esa limitación y sugiere que contacte soporte humano o use 
 Responde SIEMPRE en español, de forma clara y cordial.`;
 
 function defaultModelId() {
-  return process.env.BEDROCK_MODEL_ID || "anthropic.claude-sonnet-4-5-20250929-v1:0";
+  return process.env.BEDROCK_MODEL_ID || "us.anthropic.claude-sonnet-4-5-20250929-v1:0";
 }
 
 function region() {

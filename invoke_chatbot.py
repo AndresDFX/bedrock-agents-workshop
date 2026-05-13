@@ -22,7 +22,7 @@ import sys
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-DEFAULT_MODEL = "anthropic.claude-sonnet-4-5-20250929-v1:0"
+DEFAULT_MODEL = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 
 SYSTEM_PROMPT = """Eres un asistente de soporte de TechStore, tienda de electrónica en línea.
 
