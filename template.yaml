@@ -101,6 +101,8 @@ Resources:
                 Action:
                   - bedrock:InvokeModel
                   - bedrock:InvokeModelWithResponseStream
+                  - bedrock:GetInferenceProfile        
+                  - bedrock:ListInferenceProfiles
                 Resource: "*"  # Restringir al modelo específico en producción
         - PolicyName: BedrockKnowledgeBaseRetrieve
           PolicyDocument:
