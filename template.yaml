@@ -236,7 +236,7 @@ Resources:
     Properties:
       AgentName: !Sub "${ProjectName}-agent"
       AgentResourceRoleArn: !GetAtt BedrockAgentRole.Arn
-      FoundationModel: "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
+      FoundationModel: "anthropic.claude-sonnet-4-5-20250929-v1:0"
       IdleSessionTTLInSeconds: 1800
       AutoPrepare: true
       Instruction: |
@@ -411,7 +411,7 @@ Resources:
         Variables:
           AGENT_ID: !Ref SupportAgent
           ALIAS_ID: !GetAtt SupportAgentAlias.AgentAliasId
-          BEDROCK_MODEL_ID: us.anthropic.claude-sonnet-4-5-20250929-v1:0
+          BEDROCK_MODEL_ID: anthropic.claude-sonnet-4-5-20250929-v1:0
       Code:
         S3Bucket: !Ref BucketName
         S3Key: !Ref WebLambdaS3Key
