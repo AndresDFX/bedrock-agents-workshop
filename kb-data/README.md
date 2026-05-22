@@ -23,12 +23,3 @@ distancia coseno).
 | `info-empresa.md` | **Inventado** | Demuestra que el RAG **respeta** el contenido del KB aunque sea inventado |
 | `programa-fidelidad.md` | **Inventado** ("TechCoins") | Reglas completas + TL;DR al inicio del archivo |
 | `sucursales.md` | **Inventado** | Direcciones físicas — útil para preguntar por algo que **no** está |
-
-## Cómo distinguir los dos modos en la charla
-
-1. **Pregunta cosas que SÍ están en la KB** → el agente responderá con detalles
-   muy específicos (ej. "¿qué cubre la garantía del monitor?").
-2. **Pregunta algo que NO está** (ej. "¿tienen sucursal en Lima?") → el agente
-   debería decir que no tiene esa información, en lugar de inventar.
-3. **Combinación con tools** → "¿Es elegible mi pedido ORD-1001 según la
-   política?" mezclará `verificar_pedido` (Lambda) con la KB (política de 30 días).
