@@ -16,6 +16,23 @@ echo "    Cuenta:    ${ACCOUNT_ID}"
 echo "    Identidad: ${CALLER_ARN}"
 echo "    Region:    ${REGION}"
 
+# Warning visible si la region no es us-east-1 (la guia del taller asume us-east-1).
+if [ "${REGION}" != "us-east-1" ]; then
+  echo ""
+  echo "⚠️  ADVERTENCIA: estas desplegando en '${REGION}', no en us-east-1."
+  echo "    La Guia-Participantes del taller asume us-east-1. El deploy"
+  echo "    igual funcionara, pero las URLs y endpoints diferiran de"
+  echo "    los del resto del grupo. Para alinear con la guia:"
+  echo ""
+  echo "        export AWS_REGION=us-east-1"
+  echo "        aws configure set region us-east-1"
+  echo ""
+  echo "    Y vuelve a correr 'bash deploy.sh'."
+  echo ""
+  echo "    Esperando 5 s por si quieres cancelar con Ctrl+C..."
+  sleep 5
+fi
+
 # ─────────────────────────────────────────────────────────────
 # Detección multi-tenant: si el caller es un IAM user (no root,
 # no assumed-role), usamos su username como sufijo para que los

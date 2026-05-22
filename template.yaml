@@ -518,7 +518,10 @@ Outputs:
     Description: Bucket S3 del sitio web estático (demo comparativa chatbot vs agente)
 
   FrontendUrl:
-    Value: !Sub "http://${WebFrontendBucket}.s3-website-${AWS::Region}.amazonaws.com/"
+    # Usa el atributo WebsiteURL (no construir la URL a mano): S3 devuelve el
+    # formato correcto segun la region (us-east-1 usa guion;
+    # us-east-2 y regiones post-2019 usan punto: s3-website.${region}).
+    Value: !GetAtt WebFrontendBucket.WebsiteURL
     Description: URL HTTP del website S3 (sin CloudFront)
 
   ChatApiUrl:
