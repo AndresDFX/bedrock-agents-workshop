@@ -37,28 +37,24 @@ Provisiona **60 sandboxes aislados + 1 usuario de prueba** dentro de una sola cu
 
 ### Pre-evento (1 semana antes)
 
+**Todo lo de IAM (boundary + 60 estudiantes + `ponente-test`) en UN solo comando:**
+
 ```bash
 cd Codigo/workshop-tenants
-
-# 1. Despliega la policy de boundary (una sola vez).
-aws cloudformation deploy \
-  --template-file boundary-stack.yaml \
-  --stack-name workshop-boundary \
-  --capabilities CAPABILITY_NAMED_IAM \
-  --region us-east-1
-
-# 2. Crea los 60 usuarios + el usuario de prueba (ponente-test).
-chmod +x create-students.sh
 bash create-students.sh
-#   → Te genera students.csv con username,password,url para cada uno.
-#   → La ULTIMA fila del CSV es ponente-test (para TU validacion). NO la repartas.
-
-# 3. (Opcional) Habilita Sonnet 4.5 y Titan v2 en Bedrock (Model catalog).
-#    Esto solo lo haces tú una vez; los estudiantes heredan el acceso.
-
-# 4. (Opcional) Pide aumento de cuota de Sonnet 4.5 si esperas tráfico en paralelo.
-#    Service Quotas → Amazon Bedrock → "On-demand model inference requests per minute".
 ```
+
+El script ahora:
+1. **Detecta si la policy de boundary existe**; si no, despliega `boundary-stack.yaml` automáticamente (~30 s).
+2. Crea el grupo `WorkshopStudents` con `AdministratorAccess` (intersectado por el boundary).
+3. Crea **60 usuarios `estudiante01..estudiante60`** + **1 usuario `ponente-test`** (para tu validación pre-evento).
+4. Genera `students.csv` con `username,password,console_url` por cada uno.
+
+Salida final: `students.csv` con 61 filas. La **última fila es `ponente-test`** — no la repartas, es para ti.
+
+**Pasos manuales que solo hace una vez el ponente** (fuera de este script):
+- (Opcional) Habilita **Sonnet 4.5** y **Titan v2** en Bedrock (Model catalog → Open in Playground). Los estudiantes heredan el acceso de la cuenta.
+- (Opcional) Pide aumento de cuota de Sonnet 4.5 si esperas 60 invocaciones paralelas: Service Quotas → Amazon Bedrock → "On-demand model inference requests per minute".
 
 ### Día del evento
 
