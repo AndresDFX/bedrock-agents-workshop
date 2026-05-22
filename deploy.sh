@@ -34,7 +34,10 @@ if [ -z "${PROJECT_SUFFIX}" ] && [[ "${CALLER_ARN}" =~ :user/ ]]; then
 fi
 
 if [ -n "${PROJECT_SUFFIX}" ]; then
-  PROJECT_NAME="techstore-${PROJECT_SUFFIX}"
+  # Multi-tenant: prefijo CORTO (ts-) para no exceder el limite de 64 chars en
+  # RoleName de IAM. "AmazonBedrockExecutionRoleForKnowledgeBase_" ya son 43
+  # chars; con "techstore-${USER}" se pasaba del limite.
+  PROJECT_NAME="ts-${PROJECT_SUFFIX}"
   STACK_NAME="agente-soporte-${PROJECT_SUFFIX}"
   BUCKET_NAME="workshop-agentes-${PROJECT_SUFFIX}-${ACCOUNT_ID}"
   echo "    Modo:      multi-tenant (sufijo='${PROJECT_SUFFIX}')"

@@ -45,10 +45,12 @@ bash create-students.sh
 ```
 
 El script ahora:
-1. **Detecta si la policy de boundary existe**; si no, despliega `boundary-stack.yaml` automáticamente (~30 s).
+1. **Despliega o actualiza** `boundary-stack.yaml` automáticamente cada vez que lo corres (idempotente: si el stack ya existe sin cambios, dice "No changes" y sigue).
 2. Crea el grupo `WorkshopStudents` con `AdministratorAccess` (intersectado por el boundary).
 3. Crea **60 usuarios `estudiante01..estudiante60`** + **1 usuario `ponente-test`** (para tu validación pre-evento).
 4. Genera `students.csv` con `username,password,console_url` por cada uno.
+
+> **Nota:** los participantes en multi-tenant usan prefijo corto `ts-${USER}` en el `ProjectName` (no `techstore-${USER}`) porque el límite de 64 chars en `RoleName` de IAM no daba para más largos. En single-tenant se mantiene `techstore-agente`.
 
 Salida final: `students.csv` con 61 filas. La **última fila es `ponente-test`** — no la repartas, es para ti.
 

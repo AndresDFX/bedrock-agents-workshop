@@ -77,6 +77,9 @@ Resources:
               - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForAgents_*'
               - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForKnowledgeBase_*'
               - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${RolePrefixForPassRole}-*'
+              # Multi-tenant: deploy.sh usa prefijo CORTO 'ts-' por el limite
+              # de 64 chars en nombres de rol IAM.
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/ts-*'
 
           # ---------------------------------------------------------------
           # 3. Crear/modificar roles SOLO si incluyen el boundary. Esto evita

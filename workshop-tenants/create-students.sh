@@ -65,46 +65,45 @@ BOUNDARY_STACK_NAME="${BOUNDARY_STACK_NAME:-workshop-boundary}"
 BOUNDARY_TEMPLATE="${SCRIPT_DIR}/boundary-stack.yaml"
 
 # ---------------------------------------------------------------------------
-# Asegurar que existe la policy de boundary. Si no existe la desplegamos
-# nosotros (idempotente; si el stack ya existe, cloudformation deploy hace
-# update y termina rapido).
+# Asegurar que el stack del boundary esta desplegado y al dia. SIEMPRE corremos
+# cloudformation deploy (idempotente):
+#   - Si el stack no existe, lo crea.
+#   - Si existe, aplica el cambio si hay diferencias; si no, dice "No changes".
+# Asi cuando el template del boundary cambia (ej. nuevos ARNs en PassRole),
+# el usuario solo tiene que reejecutar este script y el boundary se actualiza.
 # ---------------------------------------------------------------------------
-echo "==> Verificando policy de boundary (${BOUNDARY_NAME})..."
-if aws iam get-policy --policy-arn "${BOUNDARY_ARN}" >/dev/null 2>&1; then
-  echo "    Boundary OK: ${BOUNDARY_ARN}"
-else
-  echo "    Policy no existe — desplegando stack '${BOUNDARY_STACK_NAME}' automaticamente..."
-  if [ ! -f "${BOUNDARY_TEMPLATE}" ]; then
-    echo ""
-    echo "❌ No se encontro ${BOUNDARY_TEMPLATE}."
-    echo "   Asegurate de correr este script desde Codigo/workshop-tenants/"
-    echo "   o ajusta SCRIPT_DIR / BOUNDARY_TEMPLATE."
-    exit 1
-  fi
-
-  aws cloudformation deploy \
-    --template-file "${BOUNDARY_TEMPLATE}" \
-    --stack-name "${BOUNDARY_STACK_NAME}" \
-    --capabilities CAPABILITY_NAMED_IAM \
-    --region "${REGION}"
-
-  echo "    Re-verificando policy tras el deploy..."
-  for _ in 1 2 3 4 5; do
-    if aws iam get-policy --policy-arn "${BOUNDARY_ARN}" >/dev/null 2>&1; then
-      break
-    fi
-    sleep 2
-  done
-
-  if ! aws iam get-policy --policy-arn "${BOUNDARY_ARN}" >/dev/null 2>&1; then
-    echo ""
-    echo "❌ La policy ${BOUNDARY_NAME} sigue sin existir tras el deploy."
-    echo "   Revisa eventos del stack:"
-    echo "     aws cloudformation describe-stack-events --stack-name ${BOUNDARY_STACK_NAME} --region ${REGION}"
-    exit 1
-  fi
-  echo "    Boundary creado: ${BOUNDARY_ARN}"
+echo "==> Desplegando / actualizando stack del boundary (${BOUNDARY_STACK_NAME})..."
+if [ ! -f "${BOUNDARY_TEMPLATE}" ]; then
+  echo ""
+  echo "❌ No se encontro ${BOUNDARY_TEMPLATE}."
+  echo "   Asegurate de correr este script desde Codigo/workshop-tenants/"
+  echo "   o ajusta SCRIPT_DIR / BOUNDARY_TEMPLATE."
+  exit 1
 fi
+
+aws cloudformation deploy \
+  --template-file "${BOUNDARY_TEMPLATE}" \
+  --stack-name "${BOUNDARY_STACK_NAME}" \
+  --capabilities CAPABILITY_NAMED_IAM \
+  --region "${REGION}" \
+  --no-fail-on-empty-changeset
+
+echo "    Verificando policy tras el deploy..."
+for _ in 1 2 3 4 5; do
+  if aws iam get-policy --policy-arn "${BOUNDARY_ARN}" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 2
+done
+
+if ! aws iam get-policy --policy-arn "${BOUNDARY_ARN}" >/dev/null 2>&1; then
+  echo ""
+  echo "❌ La policy ${BOUNDARY_NAME} no esta visible tras el deploy."
+  echo "   Revisa eventos del stack:"
+  echo "     aws cloudformation describe-stack-events --stack-name ${BOUNDARY_STACK_NAME} --region ${REGION}"
+  exit 1
+fi
+echo "    Boundary OK: ${BOUNDARY_ARN}"
 
 # ---------------------------------------------------------------------------
 # Crear (o reusar) el grupo del workshop. Le adjuntamos AdministratorAccess
