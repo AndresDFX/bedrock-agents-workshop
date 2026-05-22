@@ -24,11 +24,7 @@ Resources:
     Type: AWS::IAM::ManagedPolicy
     Properties:
       ManagedPolicyName: !Ref BoundaryName
-      Description: >
-        Permission Boundary para usuarios del taller Bedrock Agents. Permite
-        CloudFormation, Bedrock, Lambda, S3, S3 Vectors, API Gateway, Logs,
-        CloudShell, IAM con boundary obligatorio. Bloquea explicitamente EC2,
-        RDS, SageMaker, KMS, Organizations, DynamoDB y otros servicios costosos.
+      Description: "Permission Boundary para usuarios del taller Bedrock Agents. Permite CloudFormation, Bedrock, Lambda, S3, S3 Vectors, API Gateway, Logs, CloudShell, IAM con boundary obligatorio. Bloquea EC2, RDS, SageMaker, KMS, Organizations, DynamoDB y otros servicios costosos."
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
