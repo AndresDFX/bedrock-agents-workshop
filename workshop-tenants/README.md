@@ -5,7 +5,7 @@
 ## Qué hace este directorio
 
 Provisiona **60 sandboxes aislados + 1 usuario de prueba** dentro de una sola cuenta AWS usando:
-- **Permission Boundary**: una jaula IAM que limita lo que cada usuario puede hacer (permite Bedrock/Lambda/S3/CFN/API Gateway; bloquea EC2/RDS/SageMaker/etc.).
+- **Permission Boundary permisivo**: Allow universal (todos los servicios AWS funcionan), Deny solo sobre **escalación IAM** (no pueden crear otros usuarios / hacerse admin entre ellos) y **billing/organization** (no pueden cambiar plan, vincular cuentas, etc.). El ponente asume el costo de uso.
 - **Usuarios IAM individuales**: cada participante recibe `estudianteNN` + password genérica (NN = 01..60).
 - **Usuario de prueba (`ponente-test`)**: idéntico a un estudiante pero con nombre distinto, para que **TÚ** valides el flujo end-to-end antes del evento sin "gastar" una cuenta de estudiante.
 - **Sufijo único por usuario** en `deploy.sh`: detecta el `IAM_USER` actual y nombra todos los recursos con sufijo (`agente-soporte-estudiante07`, `workshop-agentes-estudiante07-XXX`, etc.). Los 60 stacks + el de prueba coexisten sin colisión.

@@ -24,203 +24,46 @@ Resources:
     Type: AWS::IAM::ManagedPolicy
     Properties:
       ManagedPolicyName: !Ref BoundaryName
-      Description: "Permission Boundary para usuarios del taller Bedrock Agents. Permite CloudFormation, Bedrock, Lambda, S3, S3 Vectors, API Gateway, Logs, CloudShell, IAM con boundary obligatorio. Bloquea EC2, RDS, SageMaker, KMS, Organizations, DynamoDB y otros servicios costosos."
+      Description: "Permission Boundary del taller Bedrock Agents. Allow universal. Solo niega escalacion IAM (crear otros usuarios, attach policies a users) y billing/organization. El ponente asume costos."
       PolicyDocument:
         Version: '2012-10-17'
         Statement:
 
           # ---------------------------------------------------------------
-          # 1. Permisos amplios para los servicios que SI usa el workshop.
+          # 1. ALLOW universal. El ponente asume el costo de la facturacion;
+          #    los participantes pueden usar cualquier servicio que necesite
+          #    el taller (Bedrock, Lambda, S3 Vectors, KMS para encryption
+          #    de Lambda env vars, CloudFormation, etc.).
           # ---------------------------------------------------------------
-          - Sid: PermitirServiciosDelTaller
+          - Sid: AllowAllForWorkshop
             Effect: Allow
-            Action:
-              # IaC y deploy
-              - cloudformation:*
-              # Compute
-              - lambda:*
-              # AI / Bedrock (runtime + management de agentes y KB)
-              - bedrock:*
-              - bedrock-agent:*
-              - bedrock-agent-runtime:*
-              # Almacenamiento
-              - s3:*
-              - s3vectors:*
-              # API publica
-              - apigateway:*
-              # Logs y observabilidad
-              - logs:*
-              # Terminal en consola
-              - cloudshell:*
-              # Identity (solo lectura propia)
-              - sts:GetCallerIdentity
-              - sts:GetSessionToken
-              - iam:GetRole
-              - iam:GetRolePolicy
-              - iam:ListRoles
-              - iam:ListRolePolicies
-              - iam:ListAttachedRolePolicies
-              - iam:GetUser
-              - iam:ListUsers
+            Action: '*'
             Resource: '*'
 
           # ---------------------------------------------------------------
-          # 2. iam:PassRole limitado a roles cuyo nombre matchea el workshop.
-          #    Sin esto, un estudiante podria pasar un rol potente del ponente
-          #    a su Lambda y escapar del sandbox.
+          # 2. Crear/modificar roles SOLO si incluyen el boundary. Esto sigue
+          #    siendo critico: sin esta condicion, un estudiante podria crear
+          #    un rol admin sin boundary y asignarlo a una Lambda para escapar.
           # ---------------------------------------------------------------
-          - Sid: PassRoleSoloARolesDelWorkshop
-            Effect: Allow
-            Action:
-              - iam:PassRole
-            Resource:
-              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForAgents_*'
-              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForKnowledgeBase_*'
-              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${RolePrefixForPassRole}-*'
-              # Multi-tenant: deploy.sh usa prefijo CORTO 'ts-' por el limite
-              # de 64 chars en nombres de rol IAM.
-              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/ts-*'
-
-          # ---------------------------------------------------------------
-          # 3. Crear/modificar roles SOLO si incluyen el boundary. Esto evita
-          #    que un estudiante cree un rol "admin" y se lo asigne a una
-          #    Lambda para escapar del sandbox.
-          # ---------------------------------------------------------------
-          - Sid: CrearRolesSoloConBoundaryDelWorkshop
-            Effect: Allow
+          - Sid: BloquearCrearRolesSinBoundary
+            Effect: Deny
             Action:
               - iam:CreateRole
               - iam:PutRolePolicy
               - iam:AttachRolePolicy
-              - iam:DetachRolePolicy
-              - iam:DeleteRolePolicy
-              - iam:DeleteRole
-              - iam:UpdateRoleDescription
-              - iam:UpdateAssumeRolePolicy
-              - iam:TagRole
-              - iam:UntagRole
             Resource: '*'
             Condition:
-              StringEquals:
+              StringNotEquals:
                 iam:PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${BoundaryName}'
 
           # ---------------------------------------------------------------
-          # 4. Bloqueo absoluto de servicios costosos / fuera de scope.
-          #    Effect: Deny siempre gana sobre cualquier Allow.
+          # 3. Bloqueo de acciones que permitirian escapar del sandbox o
+          #    afectar a otros usuarios / la cuenta entera. Lo unico vetado.
           # ---------------------------------------------------------------
-          - Sid: BloqueoAbsolutoDeServiciosCaros
+          - Sid: BloquearEscalacionYBilling
             Effect: Deny
             Action:
-              # Compute caro
-              - ec2:*
-              - ecs:*
-              - eks:*
-              - ecr:*
-              - elasticbeanstalk:*
-              - lightsail:*
-              - batch:*
-              # Databases caras
-              - rds:*
-              - dynamodb:CreateTable
-              - dynamodb:CreateGlobalTable
-              - dynamodb:UpdateTable
-              - elasticache:*
-              - documentdb:*
-              - neptune:*
-              - timestream:*
-              - keyspaces:*
-              - qldb:*
-              # ML caro y otros servicios de AI fuera de Bedrock
-              - sagemaker:*
-              - rekognition:*
-              - comprehend:*
-              - comprehendmedical:*
-              - transcribe:*
-              - translate:*
-              - textract:*
-              - polly:*
-              - personalize:*
-              - forecast:*
-              - frauddetector:*
-              - kendra:*
-              - lex:*
-              - q:*
-              - lookoutmetrics:*
-              - lookoutvision:*
-              - lookoutequipment:*
-              - omics:*
-              - healthlake:*
-              # Search caro
-              - opensearch:*
-              - aoss:*
-              - es:*
-              # Analytics caros
-              - athena:*
-              - emr:*
-              - emr-serverless:*
-              - glue:*
-              - quicksight:*
-              - finspace:*
-              - kinesisanalytics:*
-              - kinesisanalyticsv2:*
-              - kinesis:CreateStream
-              - msk:*
-              - redshift:*
-              - redshift-serverless:*
-              # Media caro
-              - mediaconvert:*
-              - medialive:*
-              - mediapackage:*
-              - mediastore:*
-              - ivs:*
-              # Storage adicional caro
-              - efs:*
-              - fsx:*
-              - storagegateway:*
-              - backup:*
-              - datasync:*
-              # Networking caro
-              - directconnect:*
-              - vpc-lattice:*
-              - networkmanager:*
-              - globalaccelerator:*
-              - cloudfront:CreateDistribution
-              - cloudfront:UpdateDistribution
-              - workspaces:*
-              - appstream:*
-              - appstream2:*
-              # Security paid services
-              - macie2:*
-              - guardduty:*
-              - inspector:*
-              - inspector2:*
-              - shield:*
-              - detective:*
-              - securityhub:*
-              # Crypto management
-              - kms:CreateKey
-              - kms:CreateAlias
-              - kms:ScheduleKeyDeletion
-              - kms:Decrypt
-              - kms:Encrypt
-              - acm-pca:*
-              # Organization / account / billing
-              - organizations:*
-              - account:*
-              - aws-portal:*
-              - billing:*
-              - budgets:*
-              - savingsplans:*
-              - ce:*
-              - cur:*
-              # Contact center
-              - connect:*
-              # Domains y DNS pago
-              - route53domains:*
-              # Marketplace (evita que se suscriban a software pago)
-              - aws-marketplace:Subscribe
-              - aws-marketplace:Unsubscribe
-              # IAM peligroso (escalation paths)
+              # IAM escalation paths: NO pueden crear / modificar otros usuarios.
               - iam:CreateUser
               - iam:DeleteUser
               - iam:UpdateUser
@@ -248,18 +91,22 @@ Resources:
               - iam:CreateLoginProfile
               - iam:DeleteLoginProfile
               - iam:UpdateLoginProfile
-              - iam:CreateVirtualMFADevice
-              - iam:EnableMFADevice
-              - iam:DeactivateMFADevice
-              - iam:DeleteVirtualMFADevice
-              - iam:PutRolePermissionsBoundary
-              - iam:DeleteRolePermissionsBoundary
               - iam:PutUserPermissionsBoundary
               - iam:DeleteUserPermissionsBoundary
-              # STS dangerous
+              - iam:PutRolePermissionsBoundary
+              - iam:DeleteRolePermissionsBoundary
+              # Federacion / STS dangerous
               - sts:AssumeRoleWithWebIdentity
               - sts:AssumeRoleWithSAML
-              - sts:DecodeAuthorizationMessage
+              # Cuenta / Organization / Billing — solo el ponente toca esto.
+              - organizations:*
+              - account:*
+              - aws-portal:*
+              - billing:*
+              - budgets:*
+              - savingsplans:*
+              - ce:*
+              - cur:*
             Resource: '*'
 
 Outputs:
