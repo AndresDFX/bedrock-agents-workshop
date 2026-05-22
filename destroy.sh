@@ -23,15 +23,31 @@ fi
 
 if [ -n "${PROJECT_SUFFIX}" ]; then
   STACK_NAME="agente-soporte-${PROJECT_SUFFIX}"
-  BUCKET_NAME="workshop-agentes-${PROJECT_SUFFIX}-${ACCOUNT_ID}"
   echo "==> Modo multi-tenant — borrando stack/bucket del usuario '${PROJECT_SUFFIX}'"
 else
   STACK_NAME="agente-soporte"
-  BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}"
   echo "==> Modo single-tenant"
 fi
+
+# Leer el BUCKET_NAME real del estado persistido (deploy.sh lo genera con timestamp).
+# Si .deploy-state no existe, intentamos descubrir el bucket por convencion (legacy)
+# o aceptamos no borrarlo (sera limpiado manualmente si quedo).
+STATE_FILE=".deploy-state"
+BUCKET_NAME=""
+if [ -f "${STATE_FILE}" ]; then
+  # shellcheck disable=SC1090
+  source "${STATE_FILE}"
+  echo "    Bucket: ${BUCKET_NAME} (leido de ${STATE_FILE})"
+elif [ -n "${PROJECT_SUFFIX}" ]; then
+  # Fallback: convencion vieja (sin timestamp) por si destruimos un deploy legacy.
+  BUCKET_NAME="workshop-agentes-${PROJECT_SUFFIX}-${ACCOUNT_ID}"
+  echo "    Bucket: ${BUCKET_NAME} (fallback legacy, no hay ${STATE_FILE})"
+else
+  BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}"
+  echo "    Bucket: ${BUCKET_NAME} (fallback legacy)"
+fi
+
 echo "    Stack:  ${STACK_NAME}"
-echo "    Bucket: ${BUCKET_NAME}"
 
 # Vaciamos el bucket ANTES de borrar el stack porque, aunque CloudFormation
 # no creó el bucket S3 normal (existe a nivel de cuenta), el stack tiene
@@ -65,6 +81,6 @@ else
   echo "    Bucket no existe (ok)."
 fi
 
-rm -f lambda.zip chat_lambda.zip agent.env
+rm -f lambda.zip chat_lambda.zip agent.env .deploy-state
 
 echo "✅ Limpieza completa. No se generarán más costos."

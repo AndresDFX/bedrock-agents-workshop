@@ -363,7 +363,11 @@ Resources:
   WebFrontendBucket:
     Type: AWS::S3::Bucket
     Properties:
-      BucketName: !Sub "${ProjectName}-web-${AWS::AccountId}"
+      # Sin BucketName: CloudFormation auto-genera un nombre unico tipo
+      # 'agente-soporte-ts-userXX-webfrontendbucket-AAAA1234ABCD'. Ventajas:
+      # (1) inmune al problema de namespace S3 que retiene el nombre 1-5 min
+      # tras un delete, (2) cero colisiones entre re-deploys del mismo stack.
+      # El nombre real se expone via Output 'FrontendBucket'.
       OwnershipControls:
         Rules:
           - ObjectOwnership: BucketOwnerEnforced

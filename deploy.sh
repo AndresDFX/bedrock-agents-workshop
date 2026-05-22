@@ -56,17 +56,39 @@ if [ -n "${PROJECT_SUFFIX}" ]; then
   # chars; con "techstore-${USER}" se pasaba del limite.
   PROJECT_NAME="ts-${PROJECT_SUFFIX}"
   STACK_NAME="agente-soporte-${PROJECT_SUFFIX}"
-  BUCKET_NAME="workshop-agentes-${PROJECT_SUFFIX}-${ACCOUNT_ID}"
   echo "    Modo:      multi-tenant (sufijo='${PROJECT_SUFFIX}')"
 else
   PROJECT_NAME="techstore-agente"
   STACK_NAME="agente-soporte"
-  BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}"
   echo "    Modo:      single-tenant"
 fi
 
+# ─────────────────────────────────────────────────────────────
+# BUCKET_NAME con timestamp para evitar el problema de namespace
+# S3 que retiene el nombre 1-5 min tras un delete. Persistimos en
+# .deploy-state para que re-deploys reusen el mismo bucket
+# (idempotencia). destroy.sh lee el mismo archivo para borrar el
+# bucket correcto.
+# ─────────────────────────────────────────────────────────────
+STATE_FILE=".deploy-state"
+if [ -f "${STATE_FILE}" ]; then
+  # shellcheck disable=SC1090
+  source "${STATE_FILE}"
+fi
+
+if [ -z "${BUCKET_NAME:-}" ]; then
+  if [ -n "${PROJECT_SUFFIX}" ]; then
+    BUCKET_NAME="workshop-agentes-${PROJECT_SUFFIX}-$(date +%s)"
+  else
+    BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}-$(date +%s)"
+  fi
+  echo "BUCKET_NAME=\"${BUCKET_NAME}\"" > "${STATE_FILE}"
+  echo "    Bucket:    ${BUCKET_NAME} (nuevo, persistido en ${STATE_FILE})"
+else
+  echo "    Bucket:    ${BUCKET_NAME} (reusado de ${STATE_FILE})"
+fi
+
 echo "    Stack:     ${STACK_NAME}"
-echo "    Bucket:    ${BUCKET_NAME}"
 
 # ─────────────────────────────────────────────────────────────
 # Permission Boundary opcional (escenario multi-tenant).
@@ -87,16 +109,49 @@ if [ -n "${BOUNDARY_ARN}" ]; then
 fi
 
 echo "==> Asegurando bucket S3 (${BUCKET_NAME})..."
+
+# create_bucket con retry porque tras un destroy reciente S3 puede tardar
+# 1-5 minutos en liberar el namespace global del bucket. El error tipico es
+# "OperationAborted: A conflicting conditional operation is currently in progress".
+create_bucket_with_retry() {
+  local max_attempts=12  # 12 * 20s = 4 min max
+  local attempt=1
+  while [ ${attempt} -le ${max_attempts} ]; do
+    if [ "${REGION}" = "us-east-1" ]; then
+      if aws s3api create-bucket --bucket "${BUCKET_NAME}" --region "${REGION}" 2>/tmp/s3err; then
+        return 0
+      fi
+    else
+      if aws s3api create-bucket \
+          --bucket "${BUCKET_NAME}" \
+          --region "${REGION}" \
+          --create-bucket-configuration LocationConstraint="${REGION}" 2>/tmp/s3err; then
+        return 0
+      fi
+    fi
+
+    # Si el error es OperationAborted (delete reciente todavia procesandose), esperamos.
+    if grep -q "OperationAborted\|conflicting conditional operation" /tmp/s3err 2>/dev/null; then
+      echo "    Intento ${attempt}/${max_attempts}: namespace S3 ocupado (delete reciente). Esperando 20 s..."
+      sleep 20
+      attempt=$((attempt + 1))
+      continue
+    fi
+
+    # Otro error: mostrar y abortar
+    cat /tmp/s3err
+    return 1
+  done
+  echo "    ❌ Excedido el numero de intentos. S3 sigue procesando la liberacion del nombre."
+  echo "       Espera 5 min mas y reintenta 'bash deploy.sh'."
+  return 1
+}
+
 if aws s3api head-bucket --bucket "${BUCKET_NAME}" 2>/dev/null; then
   echo "    Bucket ya existe."
 else
-  if [ "${REGION}" = "us-east-1" ]; then
-    aws s3api create-bucket --bucket "${BUCKET_NAME}" --region "${REGION}"
-  else
-    aws s3api create-bucket \
-      --bucket "${BUCKET_NAME}" \
-      --region "${REGION}" \
-      --create-bucket-configuration LocationConstraint="${REGION}"
+  if ! create_bucket_with_retry; then
+    exit 1
   fi
   echo "    Bucket creado."
 fi

@@ -6,6 +6,12 @@ packaged.yaml
 # Outputs locales del despliegue
 agent.env
 respuesta.json
+.deploy-state
+
+# Drive/Windows residuos
+desktop.ini
+Thumbs.db
+.DS_Store
 
 # Python cache
 __pycache__/
