@@ -30,6 +30,7 @@ Provisiona **60 sandboxes aislados + 1 usuario de prueba** dentro de una sola cu
 | `boundary-stack.yaml` | CFN stack que crea la `WorkshopBoundaryPolicy` (Permission Boundary). |
 | `create-students.sh` | Crea los 60 estudiantes + 1 usuario de prueba (`ponente-test`) con boundary, password genérica, grupo. Genera `students.csv`. |
 | `destroy-students.sh` | Borra los 60 usuarios y sus recursos huérfanos (stacks, buckets). El `ponente-test` se conserva salvo que pases `DELETE_TEST_USER=true`. |
+| `recover-boundary.sh` | **Solo si el stack del boundary queda en estado roto** (ROLLBACK_COMPLETE, UPDATE_FAILED por "AlreadyExists", etc.). Detacha el boundary de todos los usuarios, borra el stack, borra la policy huérfana y relanza `create-students.sh` desde cero. |
 | `students.csv` | (Generado) lista `username,password,console_url` para repartir. |
 | `students-summary.txt` | (Generado) resumen con la URL de login. |
 
