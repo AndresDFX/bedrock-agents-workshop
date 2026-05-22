@@ -199,15 +199,78 @@ fi
 echo ""
 
 # ---------------------------------------------------------------------------
-# Paso 6: borrar el stack workshop-boundary (borra tambien la policy)
+# Paso 6a: detachar la policy de TODAS las entidades (users, roles, groups)
+# antes de borrar el stack del boundary. Sin esto, IAM rechaza el delete
+# de la policy y el stack queda en DELETE_FAILED.
 # ---------------------------------------------------------------------------
-echo "==> Paso 6: borrando stack ${BOUNDARY_STACK_NAME}..."
+POL_ARN="arn:aws:iam::${ACCOUNT_ID}:policy/WorkshopBoundaryPolicy"
+
+if aws iam get-policy --policy-arn "${POL_ARN}" >/dev/null 2>&1; then
+  echo "==> Paso 6a: detachando WorkshopBoundaryPolicy de entidades residuales..."
+
+  # PermissionsBoundary en users
+  for u in $(aws iam list-entities-for-policy --policy-arn "${POL_ARN}" \
+               --policy-usage-filter PermissionsBoundary \
+               --query "PolicyUsers[].UserName" --output text 2>/dev/null); do
+    [ -n "$u" ] && aws iam delete-user-permissions-boundary --user-name "$u" 2>/dev/null \
+      && echo "    [user-boundary] $u"
+  done
+
+  # PermissionsBoundary en roles
+  for r in $(aws iam list-entities-for-policy --policy-arn "${POL_ARN}" \
+               --policy-usage-filter PermissionsBoundary \
+               --query "PolicyRoles[].RoleName" --output text 2>/dev/null); do
+    [ -n "$r" ] && aws iam delete-role-permissions-boundary --role-name "$r" 2>/dev/null \
+      && echo "    [role-boundary] $r"
+  done
+
+  # PermissionsPolicy attached a users
+  for u in $(aws iam list-entities-for-policy --policy-arn "${POL_ARN}" \
+               --policy-usage-filter PermissionsPolicy \
+               --query "PolicyUsers[].UserName" --output text 2>/dev/null); do
+    [ -n "$u" ] && aws iam detach-user-policy --user-name "$u" --policy-arn "${POL_ARN}" 2>/dev/null \
+      && echo "    [user-policy] $u"
+  done
+
+  # PermissionsPolicy attached a roles
+  for r in $(aws iam list-entities-for-policy --policy-arn "${POL_ARN}" \
+               --policy-usage-filter PermissionsPolicy \
+               --query "PolicyRoles[].RoleName" --output text 2>/dev/null); do
+    [ -n "$r" ] && aws iam detach-role-policy --role-name "$r" --policy-arn "${POL_ARN}" 2>/dev/null \
+      && echo "    [role-policy] $r"
+  done
+
+  # PermissionsPolicy attached a groups
+  for g in $(aws iam list-entities-for-policy --policy-arn "${POL_ARN}" \
+               --policy-usage-filter PermissionsPolicy \
+               --query "PolicyGroups[].GroupName" --output text 2>/dev/null); do
+    [ -n "$g" ] && aws iam detach-group-policy --group-name "$g" --policy-arn "${POL_ARN}" 2>/dev/null \
+      && echo "    [group-policy] $g"
+  done
+  echo ""
+fi
+
+# ---------------------------------------------------------------------------
+# Paso 6b: borrar el stack workshop-boundary (borra tambien la policy via CFN).
+# Si el stack ya esta en DELETE_FAILED, intenta delete con --retain-resources
+# para soltar la policy del control de CFN y luego borrarla manualmente.
+# ---------------------------------------------------------------------------
+echo "==> Paso 6b: borrando stack ${BOUNDARY_STACK_NAME}..."
 STACK_STATUS=$(aws cloudformation describe-stacks \
   --stack-name "${BOUNDARY_STACK_NAME}" --region "${REGION}" \
   --query "Stacks[0].StackStatus" --output text 2>/dev/null || echo "MISSING")
 
 if [ "${STACK_STATUS}" = "MISSING" ]; then
   echo "    Stack no existe (ok)."
+elif [ "${STACK_STATUS}" = "DELETE_FAILED" ]; then
+  echo "    Stack en DELETE_FAILED — usando --retain-resources para forzar limpieza..."
+  aws cloudformation delete-stack \
+    --stack-name "${BOUNDARY_STACK_NAME}" \
+    --retain-resources WorkshopBoundaryPolicy \
+    --region "${REGION}"
+  aws cloudformation wait stack-delete-complete \
+    --stack-name "${BOUNDARY_STACK_NAME}" --region "${REGION}" 2>/dev/null || true
+  echo "    Stack eliminado (policy quedo retenida, se borrara en paso 7)."
 else
   aws cloudformation delete-stack --stack-name "${BOUNDARY_STACK_NAME}" --region "${REGION}"
   aws cloudformation wait stack-delete-complete \
