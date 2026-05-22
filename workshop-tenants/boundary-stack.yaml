@@ -1,0 +1,282 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >
+  Workshop Multi-Tenant: Permission Boundary que limita lo que pueden hacer los
+  usuarios estudianteNN dentro de la cuenta del ponente. Solo despliega esto UNA
+  VEZ antes del workshop. Despues corre create-students.sh para crear los usuarios.
+
+Parameters:
+  BoundaryName:
+    Type: String
+    Default: WorkshopBoundaryPolicy
+    Description: Nombre de la politica de Permission Boundary.
+
+  RolePrefixForPassRole:
+    Type: String
+    Default: techstore
+    Description: >
+      Prefijo de nombre que deben tener los roles del workshop para que los
+      estudiantes puedan hacer iam:PassRole. Coincide con ProjectName del
+      template.yaml principal.
+
+Resources:
+
+  WorkshopBoundaryPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Ref BoundaryName
+      Description: >
+        Permission Boundary para usuarios del taller Bedrock Agents. Permite
+        CloudFormation, Bedrock, Lambda, S3, S3 Vectors, API Gateway, Logs,
+        CloudShell, IAM con boundary obligatorio. Bloquea explicitamente EC2,
+        RDS, SageMaker, KMS, Organizations, DynamoDB y otros servicios costosos.
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+
+          # ---------------------------------------------------------------
+          # 1. Permisos amplios para los servicios que SI usa el workshop.
+          # ---------------------------------------------------------------
+          - Sid: PermitirServiciosDelTaller
+            Effect: Allow
+            Action:
+              # IaC y deploy
+              - cloudformation:*
+              # Compute
+              - lambda:*
+              # AI / Bedrock (runtime + management de agentes y KB)
+              - bedrock:*
+              - bedrock-agent:*
+              - bedrock-agent-runtime:*
+              # Almacenamiento
+              - s3:*
+              - s3vectors:*
+              # API publica
+              - apigateway:*
+              # Logs y observabilidad
+              - logs:*
+              # Terminal en consola
+              - cloudshell:*
+              # Identity (solo lectura propia)
+              - sts:GetCallerIdentity
+              - sts:GetSessionToken
+              - iam:GetRole
+              - iam:GetRolePolicy
+              - iam:ListRoles
+              - iam:ListRolePolicies
+              - iam:ListAttachedRolePolicies
+              - iam:GetUser
+              - iam:ListUsers
+            Resource: '*'
+
+          # ---------------------------------------------------------------
+          # 2. iam:PassRole limitado a roles cuyo nombre matchea el workshop.
+          #    Sin esto, un estudiante podria pasar un rol potente del ponente
+          #    a su Lambda y escapar del sandbox.
+          # ---------------------------------------------------------------
+          - Sid: PassRoleSoloARolesDelWorkshop
+            Effect: Allow
+            Action:
+              - iam:PassRole
+            Resource:
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForAgents_*'
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/AmazonBedrockExecutionRoleForKnowledgeBase_*'
+              - !Sub 'arn:aws:iam::${AWS::AccountId}:role/${RolePrefixForPassRole}-*'
+
+          # ---------------------------------------------------------------
+          # 3. Crear/modificar roles SOLO si incluyen el boundary. Esto evita
+          #    que un estudiante cree un rol "admin" y se lo asigne a una
+          #    Lambda para escapar del sandbox.
+          # ---------------------------------------------------------------
+          - Sid: CrearRolesSoloConBoundaryDelWorkshop
+            Effect: Allow
+            Action:
+              - iam:CreateRole
+              - iam:PutRolePolicy
+              - iam:AttachRolePolicy
+              - iam:DetachRolePolicy
+              - iam:DeleteRolePolicy
+              - iam:DeleteRole
+              - iam:UpdateRoleDescription
+              - iam:UpdateAssumeRolePolicy
+              - iam:TagRole
+              - iam:UntagRole
+            Resource: '*'
+            Condition:
+              StringEquals:
+                iam:PermissionsBoundary: !Sub 'arn:aws:iam::${AWS::AccountId}:policy/${BoundaryName}'
+
+          # ---------------------------------------------------------------
+          # 4. Bloqueo absoluto de servicios costosos / fuera de scope.
+          #    Effect: Deny siempre gana sobre cualquier Allow.
+          # ---------------------------------------------------------------
+          - Sid: BloqueoAbsolutoDeServiciosCaros
+            Effect: Deny
+            Action:
+              # Compute caro
+              - ec2:*
+              - ecs:*
+              - eks:*
+              - ecr:*
+              - elasticbeanstalk:*
+              - lightsail:*
+              - batch:*
+              # Databases caras
+              - rds:*
+              - dynamodb:CreateTable
+              - dynamodb:CreateGlobalTable
+              - dynamodb:UpdateTable
+              - elasticache:*
+              - documentdb:*
+              - neptune:*
+              - timestream:*
+              - keyspaces:*
+              - qldb:*
+              # ML caro y otros servicios de AI fuera de Bedrock
+              - sagemaker:*
+              - rekognition:*
+              - comprehend:*
+              - comprehendmedical:*
+              - transcribe:*
+              - translate:*
+              - textract:*
+              - polly:*
+              - personalize:*
+              - forecast:*
+              - frauddetector:*
+              - kendra:*
+              - lex:*
+              - q:*
+              - lookoutmetrics:*
+              - lookoutvision:*
+              - lookoutequipment:*
+              - omics:*
+              - healthlake:*
+              # Search caro
+              - opensearch:*
+              - aoss:*
+              - es:*
+              # Analytics caros
+              - athena:*
+              - emr:*
+              - emr-serverless:*
+              - glue:*
+              - quicksight:*
+              - finspace:*
+              - kinesisanalytics:*
+              - kinesisanalyticsv2:*
+              - kinesis:CreateStream
+              - msk:*
+              - redshift:*
+              - redshift-serverless:*
+              # Media caro
+              - mediaconvert:*
+              - medialive:*
+              - mediapackage:*
+              - mediastore:*
+              - ivs:*
+              # Storage adicional caro
+              - efs:*
+              - fsx:*
+              - storagegateway:*
+              - backup:*
+              - datasync:*
+              # Networking caro
+              - directconnect:*
+              - vpc-lattice:*
+              - networkmanager:*
+              - globalaccelerator:*
+              - cloudfront:CreateDistribution
+              - cloudfront:UpdateDistribution
+              - workspaces:*
+              - appstream:*
+              - appstream2:*
+              # Security paid services
+              - macie2:*
+              - guardduty:*
+              - inspector:*
+              - inspector2:*
+              - shield:*
+              - detective:*
+              - securityhub:*
+              # Crypto management
+              - kms:CreateKey
+              - kms:CreateAlias
+              - kms:ScheduleKeyDeletion
+              - kms:Decrypt
+              - kms:Encrypt
+              - acm-pca:*
+              # Organization / account / billing
+              - organizations:*
+              - account:*
+              - aws-portal:*
+              - billing:*
+              - budgets:*
+              - savingsplans:*
+              - ce:*
+              - cur:*
+              # Contact center
+              - connect:*
+              # Domains y DNS pago
+              - route53domains:*
+              # Marketplace (evita que se suscriban a software pago)
+              - aws-marketplace:Subscribe
+              - aws-marketplace:Unsubscribe
+              # IAM peligroso (escalation paths)
+              - iam:CreateUser
+              - iam:DeleteUser
+              - iam:UpdateUser
+              - iam:CreateGroup
+              - iam:DeleteGroup
+              - iam:UpdateGroup
+              - iam:CreatePolicy
+              - iam:CreatePolicyVersion
+              - iam:DeletePolicy
+              - iam:DeletePolicyVersion
+              - iam:SetDefaultPolicyVersion
+              - iam:AttachUserPolicy
+              - iam:DetachUserPolicy
+              - iam:PutUserPolicy
+              - iam:DeleteUserPolicy
+              - iam:PutGroupPolicy
+              - iam:AttachGroupPolicy
+              - iam:DetachGroupPolicy
+              - iam:DeleteGroupPolicy
+              - iam:AddUserToGroup
+              - iam:RemoveUserFromGroup
+              - iam:CreateAccessKey
+              - iam:DeleteAccessKey
+              - iam:UpdateAccessKey
+              - iam:CreateLoginProfile
+              - iam:DeleteLoginProfile
+              - iam:UpdateLoginProfile
+              - iam:CreateVirtualMFADevice
+              - iam:EnableMFADevice
+              - iam:DeactivateMFADevice
+              - iam:DeleteVirtualMFADevice
+              - iam:PutRolePermissionsBoundary
+              - iam:DeleteRolePermissionsBoundary
+              - iam:PutUserPermissionsBoundary
+              - iam:DeleteUserPermissionsBoundary
+              # STS dangerous
+              - sts:AssumeRoleWithWebIdentity
+              - sts:AssumeRoleWithSAML
+              - sts:DecodeAuthorizationMessage
+            Resource: '*'
+
+Outputs:
+
+  PolicyArn:
+    Value: !Ref WorkshopBoundaryPolicy
+    Description: ARN del Permission Boundary. Usalo en create-students.sh y en deploy.sh (variable WORKSHOP_BOUNDARY_ARN).
+    Export:
+      Name: WorkshopBoundaryPolicyArn
+
+  PolicyName:
+    Value: !Ref BoundaryName
+    Description: Nombre de la politica de boundary.
+
+  HowToUse:
+    Value: !Sub >
+      Exporta antes de correr deploy.sh / create-students.sh:
+      export WORKSHOP_BOUNDARY_ARN=arn:aws:iam::${AWS::AccountId}:policy/${BoundaryName}
+    Description: Como inyectar el boundary en los siguientes pasos.

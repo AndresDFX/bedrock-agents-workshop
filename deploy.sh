@@ -7,15 +7,64 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────
 
 REGION="${AWS_REGION:-us-east-1}"
-STACK_NAME="agente-soporte"
-PROJECT_NAME="techstore-agente"
 
 echo "==> Verificando credenciales AWS..."
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-echo "    Cuenta: ${ACCOUNT_ID}"
-echo "    Region: ${REGION}"
+IDENTITY=$(aws sts get-caller-identity --output json)
+ACCOUNT_ID=$(echo "${IDENTITY}" | python3 -c "import json,sys; print(json.load(sys.stdin)['Account'])")
+CALLER_ARN=$(echo "${IDENTITY}" | python3 -c "import json,sys; print(json.load(sys.stdin)['Arn'])")
+echo "    Cuenta:    ${ACCOUNT_ID}"
+echo "    Identidad: ${CALLER_ARN}"
+echo "    Region:    ${REGION}"
 
-BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}"
+# ─────────────────────────────────────────────────────────────
+# Detección multi-tenant: si el caller es un IAM user (no root,
+# no assumed-role), usamos su username como sufijo para que los
+# 50 estudiantes puedan desplegar en paralelo sin colisionar.
+#
+# - arn:aws:iam::ACCT:user/USERNAME       → multi-tenant ON, suffix=USERNAME
+# - arn:aws:iam::ACCT:root                → single-tenant
+# - arn:aws:sts::ACCT:assumed-role/...    → single-tenant
+# - arn:aws:sts::ACCT:federated-user/...  → single-tenant
+#
+# Puedes forzar el modo con la variable de entorno PROJECT_SUFFIX.
+# ─────────────────────────────────────────────────────────────
+PROJECT_SUFFIX="${PROJECT_SUFFIX:-}"
+if [ -z "${PROJECT_SUFFIX}" ] && [[ "${CALLER_ARN}" =~ :user/ ]]; then
+  PROJECT_SUFFIX="${CALLER_ARN##*/}"
+fi
+
+if [ -n "${PROJECT_SUFFIX}" ]; then
+  PROJECT_NAME="techstore-${PROJECT_SUFFIX}"
+  STACK_NAME="agente-soporte-${PROJECT_SUFFIX}"
+  BUCKET_NAME="workshop-agentes-${PROJECT_SUFFIX}-${ACCOUNT_ID}"
+  echo "    Modo:      multi-tenant (sufijo='${PROJECT_SUFFIX}')"
+else
+  PROJECT_NAME="techstore-agente"
+  STACK_NAME="agente-soporte"
+  BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}"
+  echo "    Modo:      single-tenant"
+fi
+
+echo "    Stack:     ${STACK_NAME}"
+echo "    Bucket:    ${BUCKET_NAME}"
+
+# ─────────────────────────────────────────────────────────────
+# Permission Boundary opcional (escenario multi-tenant).
+# Auto-detecta el boundary del usuario IAM actual; si no hay,
+# usa la variable de entorno WORKSHOP_BOUNDARY_ARN; si tampoco,
+# deja vacio (el template lo trata como opcional).
+# ─────────────────────────────────────────────────────────────
+BOUNDARY_ARN="${WORKSHOP_BOUNDARY_ARN:-}"
+if [ -z "${BOUNDARY_ARN}" ] && [[ "${CALLER_ARN}" =~ :user/ ]]; then
+  DETECTED=$(aws iam get-user --user-name "${PROJECT_SUFFIX}" \
+    --query 'User.PermissionsBoundary.PermissionsBoundaryArn' --output text 2>/dev/null || echo "")
+  if [ -n "${DETECTED}" ] && [ "${DETECTED}" != "None" ]; then
+    BOUNDARY_ARN="${DETECTED}"
+  fi
+fi
+if [ -n "${BOUNDARY_ARN}" ]; then
+  echo "    Boundary:  ${BOUNDARY_ARN}"
+fi
 
 echo "==> Asegurando bucket S3 (${BUCKET_NAME})..."
 if aws s3api head-bucket --bucket "${BUCKET_NAME}" 2>/dev/null; then
@@ -67,16 +116,24 @@ fi
 ALIAS_TOKEN="$(date +%s)"
 echo "==> Desplegando stack CloudFormation (${STACK_NAME})..."
 echo "    AliasUpdateToken=${ALIAS_TOKEN} (fuerza nueva versión del agente)"
+
+# Si hay boundary, lo pasamos al template; si no, no se incluye el parámetro.
+PARAM_OVERRIDES=(
+  "BucketName=${BUCKET_NAME}"
+  "ProjectName=${PROJECT_NAME}"
+  "KnowledgeBaseDataPrefix=${KB_PREFIX}"
+  "AliasUpdateToken=${ALIAS_TOKEN}"
+  "WebLambdaS3Key=chat_lambda.zip"
+)
+if [ -n "${BOUNDARY_ARN}" ]; then
+  PARAM_OVERRIDES+=("PermissionsBoundaryArn=${BOUNDARY_ARN}")
+fi
+
 aws cloudformation deploy \
   --template-file template.yaml \
   --stack-name "${STACK_NAME}" \
   --capabilities CAPABILITY_NAMED_IAM \
-  --parameter-overrides \
-      BucketName="${BUCKET_NAME}" \
-      ProjectName="${PROJECT_NAME}" \
-      KnowledgeBaseDataPrefix="${KB_PREFIX}" \
-      AliasUpdateToken="${ALIAS_TOKEN}" \
-      WebLambdaS3Key="chat_lambda.zip" \
+  --parameter-overrides "${PARAM_OVERRIDES[@]}" \
   --region "${REGION}"
 
 echo "==> Obteniendo outputs..."

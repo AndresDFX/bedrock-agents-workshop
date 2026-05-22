@@ -34,6 +34,18 @@ Parameters:
     Default: chat_lambda.zip
     Description: Clave S3 del ZIP de la Lambda demo web (Sonnet vs agente, streaming)
 
+  PermissionsBoundaryArn:
+    Type: String
+    Default: ""
+    Description: >
+      (Opcional) ARN de un Permission Boundary IAM. Se aplica a los 4 roles que
+      crea este stack. Util en escenarios multi-tenant donde el workshop corre
+      en una sola cuenta con varios usuarios IAM aislados (ver workshop-tenants/).
+      Dejar vacio en modo single-tenant normal.
+
+Conditions:
+  HasPermissionsBoundary: !Not [!Equals [!Ref PermissionsBoundaryArn, ""]]
+
 Resources:
 
   # ─────────────────────────────────────────────────────────────
@@ -43,6 +55,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub "${ProjectName}-lambda-role"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref "AWS::NoValue"]
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -85,6 +98,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub "AmazonBedrockExecutionRoleForAgents_${ProjectName}"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref "AWS::NoValue"]
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -138,6 +152,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub "AmazonBedrockExecutionRoleForKnowledgeBase_${ProjectName}"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref "AWS::NoValue"]
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
@@ -378,6 +393,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub "${ProjectName}-chat-demo-role"
+      PermissionsBoundary: !If [HasPermissionsBoundary, !Ref PermissionsBoundaryArn, !Ref "AWS::NoValue"]
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:

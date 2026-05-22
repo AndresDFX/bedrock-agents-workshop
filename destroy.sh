@@ -6,10 +6,32 @@ set -euo pipefail
 # ─────────────────────────────────────────────────────────────
 
 REGION="${AWS_REGION:-us-east-1}"
-STACK_NAME="agente-soporte"
 
-ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}"
+# ─────────────────────────────────────────────────────────────
+# Detección multi-tenant igual que en deploy.sh: si el caller
+# es un IAM user, usamos su username como sufijo para borrar
+# SOLO sus recursos. Soporta override con PROJECT_SUFFIX.
+# ─────────────────────────────────────────────────────────────
+IDENTITY=$(aws sts get-caller-identity --output json)
+ACCOUNT_ID=$(echo "${IDENTITY}" | python3 -c "import json,sys; print(json.load(sys.stdin)['Account'])")
+CALLER_ARN=$(echo "${IDENTITY}" | python3 -c "import json,sys; print(json.load(sys.stdin)['Arn'])")
+
+PROJECT_SUFFIX="${PROJECT_SUFFIX:-}"
+if [ -z "${PROJECT_SUFFIX}" ] && [[ "${CALLER_ARN}" =~ :user/ ]]; then
+  PROJECT_SUFFIX="${CALLER_ARN##*/}"
+fi
+
+if [ -n "${PROJECT_SUFFIX}" ]; then
+  STACK_NAME="agente-soporte-${PROJECT_SUFFIX}"
+  BUCKET_NAME="workshop-agentes-${PROJECT_SUFFIX}-${ACCOUNT_ID}"
+  echo "==> Modo multi-tenant — borrando stack/bucket del usuario '${PROJECT_SUFFIX}'"
+else
+  STACK_NAME="agente-soporte"
+  BUCKET_NAME="workshop-agentes-${ACCOUNT_ID}"
+  echo "==> Modo single-tenant"
+fi
+echo "    Stack:  ${STACK_NAME}"
+echo "    Bucket: ${BUCKET_NAME}"
 
 # Vaciamos el bucket ANTES de borrar el stack porque, aunque CloudFormation
 # no creó el bucket S3 normal (existe a nivel de cuenta), el stack tiene
