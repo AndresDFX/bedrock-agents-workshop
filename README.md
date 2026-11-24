@@ -54,8 +54,10 @@ El modelo quedará habilitado para tu cuenta.
 ### ⚠️ Nota sobre facturación
 
 Recibirás un correo automático con asunto **"You accepted an AWS Marketplace offer"**.
-El costo inicial será **$0.00**. Solo se cobrarán fracciones de centavo por las
-peticiones del taller.
+El costo inicial será **$0.00**: solo se cobra por uso. Con Sonnet 4.5, cada prompt al
+agente cuesta unos pocos centavos de dólar (la estimación de `workshop-tenants/README.md`,
+USD 7–18 para 60 personas × ~5 prompts, da 2–6 centavos por prompt). Al terminar, corre
+`bash destroy.sh` (Paso 4).
 
 ---
 
@@ -98,6 +100,7 @@ cd bedrock-agents-workshop
     ├── catalogo-detallado.md
     ├── info-empresa.md       (datos demo / ficticios)
     ├── programa-fidelidad.md (datos demo / ficticios — TechCoins)
+    ├── techcoins-resumen.md  (datos demo / ficticios — resumen de TechCoins)
     └── sucursales.md         (datos demo / ficticios)
 ```
 
@@ -112,7 +115,7 @@ La Lambda actúa como el **ejecutor de herramientas** del agente. Implementa tre
 | Herramienta | Qué hace |
 |---|---|
 | `verificar_pedido` | Consulta el estado y elegibilidad de reembolso |
-| `procesar_reembolso` | Aprueba el reembolso si el pedido es elegible (con confirmación humana en Bedrock) |
+| `procesar_reembolso` | Aprueba el reembolso si el pedido es elegible (la confirmación humana es opcional: ver 3.6) |
 | `consultar_producto` | Devuelve precio, stock y especificaciones |
 
 ## 1.2 La Infraestructura (`template.yaml`)
@@ -154,8 +157,11 @@ desde diciembre 2025 — **Amazon S3 Vectors**.
 |---|---|---|
 | Cuesta solo cuando se usa | ❌ paga por *OCU/hora* (≈$170/mes mínimo) | ✅ paga por GB y por consulta |
 | Setup en CloudFormation | Collection + 3 políticas + Lambda custom para crear el índice | 2 recursos (`VectorBucket` + `Index`) |
-| Latencia p99 | <50 ms | <100 ms |
 | Bueno para | Búsqueda compleja con filtros, ANN ajustado | Talleres, prototipos, RAG con bajo tráfico |
+
+Sobre la latencia, AWS indica que en S3 Vectors las consultas poco frecuentes responden en menos de
+un segundo y las frecuentes en unos 100 ms o menos
+([anuncio de disponibilidad general, dic-2025](https://aws.amazon.com/about-aws/whats-new/2025/12/amazon-s3-vectors-generally-available)).
 
 Como este taller debe poder borrarse al final sin generar costos, S3 Vectors
 es la opción ganadora.
@@ -241,8 +247,9 @@ Cognito/JWT, IAM, WAF, etc.
 
 ### Confirmaciones (`RequireConfirmation`)
 
-Si el agente llega a un paso **human-in-the-loop**, la demo web solo muestra un mensaje informativo
-en el stream (no hay botón **CONFIRM** en esta iteración). Para el flujo completo usa `invoke_agent.py`
+En el template actual, `procesar_reembolso` **no** pide confirmación (ver 3.6). Si la activas y el
+agente llega a un paso **human-in-the-loop**, la demo web solo muestra un mensaje informativo en el
+stream (no hay botón **CONFIRM** en esta iteración). Para el flujo completo usa `invoke_agent.py`
 (interactivo o `AUTO_CONFIRM=CONFIRM`).
 
 ---
@@ -267,8 +274,9 @@ También puedes correr un escenario individual: `bash test.sh 1`, `bash test.sh 
 o `bash test.sh 3`. Demos avanzadas (`trace`, `chat`, `confirm`, `compare`): secciones 3.4–3.7.
 
 > Los escenarios automáticos (`bash test.sh`, escenarios 1–3) exportan
-> `AUTO_CONFIRM=CONFIRM` para que `procesar_reembolso` complete sin prompts
-> interactivos (la función tiene **confirmación humana** habilitada en el template).
+> `AUTO_CONFIRM=CONFIRM`: si activas la **confirmación humana** (sección 3.6),
+> `procesar_reembolso` completa igual sin prompts interactivos. En el template
+> actual la función no pide confirmación.
 
 ## 3.1 Consulta simple (1 herramienta)
 
@@ -285,7 +293,7 @@ se lo pidas explícitamente:
 AUTO_CONFIRM=CONFIRM python invoke_agent.py "Quiero un reembolso para mi pedido ORD-1001 porque el producto llegó dañado"
 ```
 
-(Omitir `AUTO_CONFIRM` si quieres que el script te pregunte en consola antes de ejecutar `procesar_reembolso`.)
+(`AUTO_CONFIRM` solo importa si activaste la confirmación humana de la sección 3.6: omítelo para que el script te pregunte en consola antes de ejecutar `procesar_reembolso`.)
 
 **¿Qué hace el agente internamente?**
 
@@ -337,11 +345,24 @@ bash test.sh chat trace
 
 ## 3.6 Human-in-the-loop (confirmación antes de `procesar_reembolso`)
 
-En `template.yaml`, la función `procesar_reembolso` tiene `RequireConfirmation: true`.
-Cuando el agente intenta ejecutarla, la API devuelve `returnControl` y tu aplicación
+El template actual **no** pide confirmación antes de `procesar_reembolso`. Para activarla,
+añade `RequireConfirmation` a esa función en `template.yaml`, con el valor `ENABLED` (no `true`):
+
+```yaml
+- Name: procesar_reembolso
+  Description: >
+    Inicia el proceso de reembolso para un pedido elegible.
+    Solo funciona si el pedido fue entregado hace menos de 30 días.
+  RequireConfirmation: ENABLED   # ← esta línea
+  Parameters:
+    ...
+```
+
+Después vuelve a correr `bash deploy.sh` (el `AliasUpdateToken` lleva el cambio al alias).
+Con eso, cuando el agente intenta ejecutarla, la API devuelve `returnControl` y tu aplicación
 debe enviar `CONFIRM` o `DENY` en la siguiente llamada (lo hace `invoke_agent.py`).
 
-Demo interactiva:
+Demo interactiva (solo pregunta si activaste la confirmación):
 
 ```bash
 bash test.sh confirm
@@ -377,9 +398,10 @@ reembolso sin interrupciones en pantalla.
 
 ## 3.9 RAG: el agente consulta la Knowledge Base
 
-La carpeta `kb-data/` contiene 9 documentos en español (políticas reales,
-catálogo extendido, datos demo de la empresa y del programa **TechCoins**, y
-sucursales). Con `bash deploy.sh` se sincronizan a S3, se vectorizan con
+La carpeta `kb-data/` contiene 10 documentos en español, todos ficticios (políticas,
+FAQ, catálogo extendido, datos de la empresa, el programa **TechCoins** y su resumen,
+y sucursales). Con `bash deploy.sh` se sincronizan a S3 (sin el `README.md` de la
+carpeta), se vectorizan con
 `amazon.titan-embed-text-v2:0` (1024 dim) y se guardan en S3 Vectors.
 
 ### 4 escenarios RAG de un solo golpe

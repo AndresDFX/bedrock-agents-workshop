@@ -1,10 +1,10 @@
 # Workshop Multi-Tenant — Setup para el ponente
 
-> ⚠️ **Esto NO es para los participantes.** Esta carpeta contiene los scripts y plantillas que **el ponente** ejecuta UNA SOLA VEZ antes del evento para provisionar **60 usuarios IAM** + **1 usuario de prueba (`ponente-test`)** aislados dentro de su propia cuenta AWS. Los participantes simplemente usan su `estudianteNN` + password, abren CloudShell y siguen [Guia-Participantes.md](../../Guia-Participantes.md) normal.
+> ⚠️ **Esto NO es para los participantes.** Esta carpeta contiene los scripts y plantillas que **el ponente** ejecuta UNA SOLA VEZ antes del evento para provisionar **60 usuarios IAM** + **1 usuario de prueba (`ponente-test`)** dentro de su propia cuenta AWS. Los participantes simplemente usan su `estudianteNN` + password, abren CloudShell y siguen [la guía del taller](../README.md) como cualquier participante.
 
 ## Qué hace este directorio
 
-Provisiona **60 sandboxes aislados + 1 usuario de prueba** dentro de una sola cuenta AWS usando:
+Provisiona **60 entornos de participante + 1 usuario de prueba** dentro de una sola cuenta AWS (separados por nombre, no por permisos: ver «Aislamiento entre estudiantes») usando:
 - **Permission Boundary permisivo**: Allow universal (todos los servicios AWS funcionan), Deny solo sobre **escalación IAM** (no pueden crear otros usuarios / hacerse admin entre ellos) y **billing/organization** (no pueden cambiar plan, vincular cuentas, etc.). El ponente asume el costo de uso.
 - **Usuarios IAM individuales**: cada participante recibe `estudianteNN` + password genérica (NN = 01..60).
 - **Usuario de prueba (`ponente-test`)**: idéntico a un estudiante pero con nombre distinto, para que **TÚ** valides el flujo end-to-end antes del evento sin "gastar" una cuenta de estudiante.
@@ -15,7 +15,7 @@ Provisiona **60 sandboxes aislados + 1 usuario de prueba** dentro de una sola cu
 ✅ **Cuando tiene sentido:**
 - No conseguiste AWS Workshop Studio ni vouchers.
 - No quieres exigir cuenta AWS personal a los participantes.
-- Estás dispuesto a absorber USD 10–30 de Bedrock para los 50.
+- Estás dispuesto a absorber USD 10–30 de Bedrock para los 60.
 - Tienes una cuenta AWS dedicada al workshop (recomendado), no tu cuenta personal con datos sensibles.
 
 ❌ **Cuando NO usarlo:**
@@ -42,7 +42,7 @@ Provisiona **60 sandboxes aislados + 1 usuario de prueba** dentro de una sola cu
 **Todo lo de IAM (boundary + 60 estudiantes + `ponente-test`) en UN solo comando:**
 
 ```bash
-cd Codigo/workshop-tenants
+cd workshop-tenants
 bash create-students.sh
 ```
 
@@ -67,16 +67,16 @@ Salida final: `students.csv` con 61 filas. La **última fila es `ponente-test`**
 3. Cada participante:
    - Entra a la consola con su `estudianteNN`.
    - Abre **CloudShell**.
-   - `git clone https://github.com/AndresDFX/aws-community-day-2026.git`
-   - `cd aws-community-day-2026 && bash deploy.sh`
-   - Sigue [Guia-Participantes.md](../../Guia-Participantes.md).
+   - `git clone https://github.com/AndresDFX/bedrock-agents-workshop.git`
+   - `cd bedrock-agents-workshop && bash deploy.sh`
+   - Sigue [la guía del taller](../README.md).
 
 **El `deploy.sh` detecta automáticamente que estás como `estudiante07`** y nombra todos los recursos con ese sufijo. Los 60 stacks (más el de `ponente-test` si lo dejaste) no colisionan entre sí.
 
 ### Post-evento (mismo día o al día siguiente)
 
 ```bash
-cd Codigo/workshop-tenants
+cd workshop-tenants
 
 # 1. Destruye TODOS los stacks de los estudiantes (los que no corrieron destroy.sh).
 # 2. Borra usuarios IAM, login profiles, group memberships.
@@ -91,12 +91,13 @@ aws cloudformation delete-stack --stack-name workshop-boundary --region us-east-
 
 ### Permission Boundary (la jaula)
 
-La policy `WorkshopBoundaryPolicy` (definida en `boundary-stack.yaml`) declara:
+La policy `WorkshopBoundaryPolicy` (definida en `boundary-stack.yaml`) declara tres sentencias:
 
-1. **Allow amplio** sobre los servicios del taller: CloudFormation, Lambda, Bedrock (todos los namespaces), S3, S3 Vectors, API Gateway, Logs, CloudShell.
-2. **Allow condicional** para crear/modificar roles IAM **solo si traen el boundary attached**. Sin esto, un estudiante creativo podría crear un rol "admin" y asignárselo a una Lambda.
-3. **Allow restringido** para `iam:PassRole` solo a roles cuyo nombre matchea el workshop (`AmazonBedrockExecutionRoleForAgents_*`, `techstore-*`, etc.).
-4. **Deny absoluto** sobre EC2, RDS, SageMaker, KMS, Organizations, DynamoDB CreateTable, OpenSearch, Athena, EMR, Glue, todos los servicios de ML pago (Rekognition, Comprehend, Polly…), media transcoding, Marketplace Subscribe, y todas las acciones IAM peligrosas (CreateUser, CreateAccessKey, AttachUserPolicy…).
+1. **Allow universal** (`AllowAllForWorkshop`, `Action: '*'`): el ponente asume el costo y los participantes pueden usar cualquier servicio que necesite el taller (Bedrock, Lambda, S3 Vectors, KMS, CloudFormation…).
+2. **Deny condicional** (`BloquearCrearRolesSinBoundary`): niega `iam:CreateRole`, `iam:PutRolePolicy` e `iam:AttachRolePolicy` si el rol no lleva este mismo boundary. Sin esto, un estudiante creativo podría crear un rol "admin" y asignárselo a una Lambda para escapar.
+3. **Deny de escalación y facturación** (`BloquearEscalacionYBilling`): crear o modificar usuarios, grupos, políticas, llaves de acceso, login profiles y boundaries de usuario; la federación STS (`AssumeRoleWithWebIdentity`, `AssumeRoleWithSAML`); y todo lo de cuenta, organización y facturación (`organizations`, `account`, `aws-portal`, `billing`, `budgets`, `savingsplans`, `ce`, `cur`).
+
+**No hay lista de servicios vetados:** EC2, RDS, SageMaker, OpenSearch y el resto están permitidos. El costo se controla con la cuota de Bedrock, una alarma de facturación y el borrado al final del evento.
 
 **Regla AWS:** el permiso efectivo de un usuario con boundary es **la intersección** entre las políticas que tiene (en este caso `AdministratorAccess`) y el boundary. Aunque parezca admin, el boundary lo limita.
 
@@ -108,20 +109,18 @@ Si un estudiante intentara crear un rol manualmente sin boundary → recibe `Acc
 
 ### Aislamiento entre estudiantes
 
-Cada estudiante:
-- **Ve** sus propios stacks, sus propios buckets, su propio agente.
-- **NO ve** los recursos de otros estudiantes (S3 buckets son únicos por sufijo; IAM roles tienen el sufijo en el nombre; CFN stacks idem).
-- **NO puede** modificar el stack de otro estudiante (las APIs IAM/CFN respetan ownership por defecto cuando el ARN tiene un sufijo distinto, y el boundary les bloquea modificar usuarios/grupos que no son ellos).
-
-Hay una pequeña fuga teórica: **podrían listar otros buckets/roles** (`s3:ListAllMyBuckets`, `iam:ListRoles`) porque esos APIs no aceptan resource-level scoping. Para un taller es aceptable; el conocimiento de "existe un bucket llamado workshop-agentes-estudiante42-XXX" no es información sensible.
+El aislamiento es **por nombre, no por permisos**:
+- Cada estudiante crea sus recursos con su sufijo (stacks, buckets, roles, agente), así que los 60 despliegues no chocan.
+- Pero el boundary **no** separa a unos estudiantes de otros. Con `AdministratorAccess` y el Allow universal, cualquiera puede listar, leer, modificar o borrar el stack, el bucket o el agente de otro. Lo único vetado es IAM (usuarios, grupos, políticas), la federación y la facturación.
+- Para un taller con personas de confianza, en una cuenta dedicada que se borra al terminar, es aceptable. Si no lo es, usa Workshop Studio o una cuenta por participante.
 
 ## Costos esperados
 
 | Concepto | Estimado |
 |---|---|
 | Bedrock Sonnet 4.5 (60 personas × ~5 prompts) | USD 7–18 |
-| Bedrock Titan v2 embeddings (50 ingestas iniciales) | < USD 0.50 |
-| S3 Vectors (50 índices vacíos durante 1 día) | < USD 1 |
+| Bedrock Titan v2 embeddings (60 ingestas iniciales) | < USD 0.50 |
+| S3 Vectors (60 índices pequeños durante 1 día) | < USD 1 |
 | Lambda + API Gateway + S3 + CloudWatch | < USD 1 |
 | **Total** | **USD 10–20** |
 
@@ -132,8 +131,8 @@ Hay una pequeña fuga teórica: **podrían listar otros buckets/roles** (`s3:Lis
 | Riesgo | Mitigación |
 |---|---|
 | Throttling de Bedrock con 60 personas simultáneas | Pide aumento de quota antes del evento. Cross-region inference profile (`us.*`) ya está activo y reparte carga. |
-| Un estudiante crea un loop infinito de invocaciones | Boundary bloquea recursos que escalen costo (DynamoDB, OpenSearch). Bedrock tiene quota por cuenta. Considera CloudWatch alarm sobre `EstimatedCharges`. |
-| Cuotas de cuenta: 50 KBs, 50 agentes, 50 VectorBuckets | Verifica cuotas antes: `aws service-quotas list-service-quotas --service-code bedrock`. Default: ≥ 50 en cada uno. Si no, pide aumento. |
+| Un estudiante crea un loop infinito de invocaciones o lanza servicios caros | El boundary **no** limita servicios. Bedrock tiene quota por cuenta; configura antes una alarma de CloudWatch sobre `EstimatedCharges` (o un AWS Budget) y borra todo al terminar. |
+| Cuotas de cuenta: 61 KBs, 61 agentes, 61 VectorBuckets (60 estudiantes + `ponente-test`) | Verifica cuotas antes: `aws service-quotas list-service-quotas --service-code bedrock`. Si alguna no alcanza, pide aumento. |
 | Estudiante deja recursos sin destruir | `destroy-students.sh` los limpia todos automáticamente. |
 | Un participante comparte sus credenciales fuera del evento | Password expira / cámbiala / borra el usuario después. Considera MFA pero complica el setup. |
 
@@ -143,7 +142,7 @@ Hay una pequeña fuga teórica: **podrían listar otros buckets/roles** (`s3:Lis
 R: Necesitas permisos para `iam:CreateUser`, `iam:CreateLoginProfile`, `iam:CreateGroup`, `iam:AttachGroupPolicy`. AdminAccess o un rol equivalente funciona.
 
 **P: ¿Funciona en una cuenta que ya tiene workloads en producción?**
-R: **No recomendado.** El boundary protege a tus workloads de los estudiantes, pero un error en el boundary podría exponer algo. Mejor cuenta dedicada.
+R: **No.** El boundary es permisivo: los estudiantes pueden ver y modificar casi cualquier recurso de la cuenta (todo menos IAM y facturación). Usa una cuenta dedicada al taller.
 
 **P: ¿Y si un estudiante olvida `bash destroy.sh` y se va?**
 R: Tu `destroy-students.sh` los limpia automáticamente al final. Tu costo total termina igual.
@@ -168,8 +167,8 @@ R: `NUM_USERS=30 bash create-students.sh`. Los crea idempotentemente.
 # 3. Login con ponente-test + la password generica en el login URL.
 # 4. Abre CloudShell.
 # 5. Dentro de CloudShell:
-git clone https://github.com/AndresDFX/aws-community-day-2026.git
-cd aws-community-day-2026
+git clone https://github.com/AndresDFX/bedrock-agents-workshop.git
+cd bedrock-agents-workshop
 bash deploy.sh
 # 6. Verifica que el output diga: Modo: multi-tenant (sufijo='ponente-test')
 bash test.sh trace 2     # validar tools encadenadas
